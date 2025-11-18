@@ -190,7 +190,7 @@ exit /b 0
 call :Log "Creating system restore point"
 echo.
 echo [*] Creating system restore point...
-"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Try { Checkpoint-Computer -Description 'NonTouchGamingOptimizer' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; exit 0 } Catch { Write-Warning $_; exit 1 }" >> "%LOG_FILE%" 2>&1
+    "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Try { Checkpoint-Computer -Description 'NonTouchGamingOptimizer' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; exit 0 } Catch { Write-Warning $_; exit 1 }" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
     echo.
     echo ========================================================================
@@ -206,17 +206,18 @@ if errorlevel 1 (
     echo   5. Click OK and try running this script again
     echo ========================================================================
     echo.
-    call :Log "Restore point creation failed - prompting user"
-    set /p "continue=Do you want to CONTINUE WITHOUT a restore point? (Y/N): "
-    if /I not "!continue!"=="Y" (
+        call :Log "Restore point creation failed"
         echo.
-        echo [!] Operation cancelled by user. Please enable System Protection and try again.
-        call :Log "User cancelled due to restore point failure"
-        exit /b 1
-    )
-    echo.
-    echo [!] Continuing without restore point (user confirmed)...
-    call :Log "User chose to continue without restore point"
+        choice /c YN /n /m "Continue without a restore point? (Y/N): "
+        if errorlevel 2 (
+            echo.
+            echo [!] Operation cancelled. Please enable System Protection and rerun the script.
+            call :Log "User aborted after restore failure"
+            exit /b 1
+        )
+        echo.
+        echo [!] Continuing without a restore point at user request...
+        call :Log "User chose to continue without restore point"
 ) else (
     echo %CLR_SUCCESS%[+] Restore point created successfully.%CLR_RESET%
     call :Log "Restore point created"
@@ -255,7 +256,6 @@ for %%A in (
     Microsoft.ZuneMusic
     Microsoft.ZuneVideo
     MicrosoftWindows.Client.WebExperience
-    MicrosoftTeams
     Microsoft.YourPhone
     SpotifyAB.SpotifyMusic
     BytedancePte.Ltd.TikTok
