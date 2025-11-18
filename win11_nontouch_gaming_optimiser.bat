@@ -57,10 +57,17 @@ set "LOG_FILE=%LOG_DIR%\nontouch_gaming_optimizer_%STAMP%.log"
 call :Log "=== Windows 11 Non-Touch Gaming Optimizer started ==="
 
 call :DetectOS
+call :DetectHardware
+call :Log "Initialization complete - entering menu"
 
 :Menu
 cls
 call :Banner
+if errorlevel 1 (
+    echo [!] Error displaying banner
+    pause
+    exit /b 1
+)
 call :Log "Awaiting menu selection"
 echo.
 echo    %CLR_MENU%[1 / F]%CLR_RESET% FULL OPTIMIZATION - All gaming tweaks in one run
@@ -307,9 +314,9 @@ exit /b 0
 :ApplyGamingTweaks
 call :Log "Applying gaming tweaks"
 echo.
-echo ========================================================================
-echo   %CLR_TITLE%APPLYING GAMING PERFORMANCE TWEAKS%CLR_RESET%
-echo ========================================================================
+echo %CLR_TITLE%  ======================================================================%CLR_RESET%
+echo %CLR_TITLE%  ^^|                 GAMING PERFORMANCE TWEAKS                         ^^|%CLR_RESET%
+echo %CLR_TITLE%  ======================================================================%CLR_RESET%
 echo.
 echo [*] Enabling Ultimate Performance plan (or High Performance fallback)...
 set "UP_GUID="
@@ -368,12 +375,29 @@ echo [*] Enabling full Game Mode stack...
 reg add "HKCU\Software\Microsoft\GameBar" /v UseNexusForGameBarEnabled /t REG_DWORD /d 0 /f >nul
 reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\default\ApplicationManagement\AllowGameDVR" /v value /t REG_DWORD /d 0 /f >nul
 
+echo [*] Optimizing system timer resolution for better frame pacing...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel" /v GlobalTimerResolutionRequests /t REG_DWORD /d 1 /f >nul
+bcdedit /set useplatformclock true >nul 2>&1
+bcdedit /set disabledynamictick yes >nul 2>&1
+
+echo [*] Prioritizing foreground apps (games) over background tasks...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 38 /f >nul
+
 sc stop "DiagTrack" >nul 2>&1
 sc config "DiagTrack" start= disabled >nul 2>&1
 
 call :Log "Gaming tweaks applied"
 echo.
 echo %CLR_SUCCESS%[+] Gaming optimizations applied!%CLR_RESET% FPS and responsiveness improved.
+if /I "%GPU_VENDOR%"=="NVIDIA" (
+    echo     %CLR_WARNING%Tip:%CLR_RESET% Open NVIDIA Control Panel ^> Low Latency Mode = Ultra
+)
+if /I "%GPU_VENDOR%"=="AMD Radeon" (
+    echo     %CLR_WARNING%Tip:%CLR_RESET% Open AMD Software ^> Anti-Lag = Enabled
+)
+if /I "%GPU_VENDOR%"=="Intel Arc" (
+    echo     %CLR_WARNING%Tip:%CLR_RESET% Open Intel Graphics Command Center for game optimizations
+)
 echo     Log: %LOG_FILE%
 exit /b 0
 
@@ -844,7 +868,7 @@ echo ========================================================================
 echo   %CLR_TITLE%OPTIMIZATION REPORT%CLR_RESET%
 echo ========================================================================
 echo.
-echo   Script version: 2.0 - Gaming Edition
+echo   Script version: 2.1 - Gaming Edition
 echo   Log file: %LOG_FILE%
 echo.
 echo   %CLR_SUBTITLE%System Information:%CLR_RESET%
@@ -909,6 +933,9 @@ reg add "HKCU\Software\Microsoft\GameBar" /v AllowAutoGameMode /t REG_DWORD /d 1
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR" /v AllowGameDVR /t REG_DWORD /d 1 /f >nul
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v AppCaptureEnabled /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v GameDVR_Enabled /f >nul 2>&1
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 2 /f >nul
+bcdedit /deletevalue useplatformclock >nul 2>&1
+bcdedit /deletevalue disabledynamictick >nul 2>&1
 call :RevertNetworkTweaks
 "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Enable-WindowsOptionalFeature -Online -FeatureName 'TabletPC-OC' -NoRestart -ErrorAction SilentlyContinue" >> "%LOG_FILE%" 2>&1
 "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Enable-WindowsOptionalFeature -Online -FeatureName 'InkAndHandwritingServices' -NoRestart -ErrorAction SilentlyContinue" >> "%LOG_FILE%" 2>&1
@@ -936,42 +963,70 @@ call :Log "Removing %PKG%"
 exit /b 0
 
 :DetectOS
-set "OS_CAPTION=Unknown"
-set "OS_MAJOR=0"
-for /f "usebackq delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "(Get-CimInstance Win32_OperatingSystem).Caption"`) do set "OS_CAPTION=%%I"
-for /f %%I in ('"%POWERSHELL%" -NoProfile -Command "[System.Environment]::OSVersion.Version.Major"') do set "OS_MAJOR=%%I"
-if not defined OS_MAJOR set "OS_MAJOR=0"
-call :Log "Detected OS: %OS_CAPTION% (major %OS_MAJOR%)"
-echo Detected OS: %OS_CAPTION%
-if %OS_MAJOR% LSS 10 (
-    color 0C
-    echo [!] Warning: This optimizer targets Windows 10/11. Proceed at your own risk.
-    call :Log "Warning - unsupported OS version"
-    color 0A
+set "OS_CAPTION=Windows"
+set "OS_MAJOR=10"
+for /f "tokens=4 delims=[] " %%I in ('ver') do (
+    for /f "tokens=1 delims=." %%J in ("%%I") do set "OS_MAJOR=%%J"
 )
+for /f "tokens=2 delims=:" %%I in ('systeminfo ^| findstr /B /C:"OS Name"') do (
+    for /f "tokens=* delims= " %%J in ("%%I") do set "OS_CAPTION=%%J"
+)
+call :Log "Detected OS: %OS_CAPTION% (major %OS_MAJOR%)"
+if %OS_MAJOR% GEQ 10 (
+    echo Detected: %OS_CAPTION% - Compatible
+) else (
+    echo [!] Warning: %OS_CAPTION% detected. This optimizer targets Windows 10/11.
+    call :Log "Warning - unsupported OS version"
+)
+exit /b 0
+
+:DetectHardware
+set "GPU_VENDOR=Unknown"
+set "CPU_VENDOR=Unknown"
+for /f "tokens=2 delims==" %%I in ('wmic path win32_VideoController get Name /value 2^>nul') do (
+    set "GPU_NAME=%%I"
+    echo %%I | findstr /I "NVIDIA" >nul && set "GPU_VENDOR=NVIDIA"
+    echo %%I | findstr /I "AMD Radeon" >nul && set "GPU_VENDOR=AMD Radeon"
+    echo %%I | findstr /I "Intel" >nul && set "GPU_VENDOR=Intel Graphics"
+    echo %%I | findstr /I "Arc" >nul && set "GPU_VENDOR=Intel Arc"
+)
+for /f "tokens=2 delims==" %%I in ('wmic cpu get Name /value 2^>nul') do (
+    set "CPU_NAME=%%I"
+    echo %%I | findstr /I "Intel" >nul && set "CPU_VENDOR=Intel"
+    echo %%I | findstr /I "AMD Ryzen" >nul && set "CPU_VENDOR=AMD Ryzen"
+    echo %%I | findstr /I "AMD" >nul && set "CPU_VENDOR=AMD"
+)
+call :Log "Hardware detected: GPU=%GPU_VENDOR%, CPU=%CPU_VENDOR%"
 exit /b 0
 
 :Banner
 if defined CLR_TITLE (
-    echo %CLR_TITLE%================================================================%CLR_RESET%
-    echo %CLR_TITLE%  Windows 11 Non-Touch Gaming Optimizer%CLR_RESET%
-    echo %CLR_SUBTITLE%  by Matt Hurley%CLR_RESET%
-    echo %CLR_SUBTITLE%----------------------------------------------------------------%CLR_RESET%
-    echo   Maximize FPS ^| Reduce Latency ^| Optimize for Gaming
-    echo   Run as administrator. Changes are logged to:
-    echo   %LOG_FILE%
-    echo   %CLR_SUBTITLE%Press [H] for Help/README%CLR_RESET%
-    echo %CLR_TITLE%================================================================%CLR_RESET%
+    echo %CLR_TITLE%  ================================================================%CLR_RESET%
+    echo %CLR_TITLE%                                                                  %CLR_RESET%
+    echo %CLR_TITLE%           WINDOWS 11 GAMING OPTIMIZER v2.1                      %CLR_RESET%
+    echo %CLR_TITLE%                                                                  %CLR_RESET%
+    echo %CLR_TITLE%  ================================================================%CLR_RESET%
+    echo %CLR_SUBTITLE%                         by Matt Hurley%CLR_RESET%
+    echo %CLR_SUBTITLE%  ----------------------------------------------------------------%CLR_RESET%
+    echo   %CLR_SUCCESS%[*]%CLR_RESET% Maximize FPS ^| Reduce Latency ^| Optimize Performance
+    if defined GPU_VENDOR echo   %CLR_SUCCESS%[*]%CLR_RESET% Detected GPU: %GPU_VENDOR%
+    if defined CPU_VENDOR echo   %CLR_SUCCESS%[*]%CLR_RESET% Detected CPU: %CPU_VENDOR%
+    echo   %CLR_WARNING%[!]%CLR_RESET% Run as administrator. Changes logged to:
+    echo       %LOG_FILE%
+    echo   %CLR_SUBTITLE%[H] Help/README ^| [P] Report ^| [U] Undo Changes%CLR_RESET%
+    echo %CLR_TITLE%  ================================================================%CLR_RESET%
 ) else (
-    echo ================================================================
-    echo   Windows 11 Non-Touch Gaming Optimizer
-    echo   by Matt Hurley
-    echo ----------------------------------------------------------------
-    echo   Maximize FPS ^| Reduce Latency ^| Optimize for Gaming
-    echo   Run as administrator. Changes are logged to:
+    echo   ================================================================
+    echo    Windows 11 Non-Touch Gaming Optimizer v2.1
+    echo                    by Matt Hurley
+    echo   ----------------------------------------------------------------
+    echo   Maximize FPS ^| Reduce Latency ^| Optimize Performance
+    if defined GPU_VENDOR echo   Detected GPU: %GPU_VENDOR%
+    if defined CPU_VENDOR echo   Detected CPU: %CPU_VENDOR%
+    echo   Run as administrator. Changes logged to:
     echo   %LOG_FILE%
-    echo   Press [H] for Help/README
-    echo ================================================================
+    echo   [H] Help ^| [P] Report ^| [U] Undo
+    echo   ================================================================
 )
 exit /b 0
 
