@@ -92,6 +92,8 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 - Game Mode enabled, Game DVR disabled
 - CPU/GPU priority set to "High" for games
 - Multimedia system profile optimized (NetworkThrottlingIndex, SystemResponsiveness)
+- Foreground app (game) prioritization via Win32PrioritySeparation (0x26)
+- System timer resolution optimized for better frame pacing
 - Mouse acceleration disabled, increased input queue sizes
 - Low latency flags for games and audio
 
@@ -213,6 +215,32 @@ This script does **NOT** disable:
 
 ---
 
+## 🖥️ Hardware Compatibility
+
+### **GPU Vendor Support**
+This optimizer is **vendor-agnostic** and works with all modern GPUs:
+
+| GPU Vendor | Compatibility | Notes |
+|------------|---------------|-------|
+| **NVIDIA** | ✅ Fully Compatible | GeForce GTX 10xx+. Hardware-accelerated GPU scheduling requires RTX 20xx+ |
+| **AMD Radeon** | ✅ Fully Compatible | RX 5000+ recommended. GPU scheduling requires RX 5000+ series |
+| **Intel Arc** | ✅ Fully Compatible | Arc A-series supported. GPU scheduling fully compatible |
+| **Intel iGPU** | ✅ Compatible | Integrated graphics (11th gen+). Some GPU scheduling features may be limited |
+
+**Registry tweaks applied are Windows-level optimizations** and do not interfere with vendor-specific drivers.
+
+### **CPU Vendor Support**
+All CPU-related optimizations are **cross-vendor compatible**:
+
+| CPU Vendor | Compatibility | Notes |
+|------------|---------------|-------|
+| **Intel** | ✅ Fully Compatible | Core i3/i5/i7/i9, all generations |
+| **AMD** | ✅ Fully Compatible | Ryzen 3/5/7/9, Threadripper, all generations |
+
+**Power plans, scheduler settings, and multimedia profiles** work identically on Intel and AMD CPUs.
+
+---
+
 ## 🔧 Manual Tweaks (Optional)
 
 ### **NVIDIA GPU**
@@ -226,6 +254,12 @@ This script does **NOT** disable:
 2. Enable **Anti-Lag** (or Anti-Lag+)
 3. Enable **Radeon Boost** (if supported)
 4. Set **Texture Filtering Quality** to Performance
+
+### **Intel Arc GPU**
+1. Intel Graphics Command Center → Gaming → Global Settings
+2. Enable **XeSS** (if game supports it)
+3. Set performance mode to **Maximum Performance**
+4. Update to latest Intel Arc drivers for best compatibility
 
 ### **BIOS Settings**
 - Enable **XMP/DOCP** for RAM (runs RAM at rated speed)
@@ -289,7 +323,18 @@ After running optimizations, use option **[P]** to view:
 
 ## 📝 Changelog
 
-### **Version 2.0** (Current)
+### **Version 2.1** (Current)
+- **New:** Hardware detection - automatically detects GPU vendor (NVIDIA/AMD/Intel Arc) and CPU vendor (Intel/AMD)
+- **New:** Vendor-specific tips displayed after gaming tweaks (Low Latency Mode, Anti-Lag, XeSS)
+- **New:** Enhanced ASCII banner with "GAMING OPT" title art
+- **New:** Win32PrioritySeparation optimization (0x26) - prioritizes foreground apps (games) over background tasks
+- **New:** System timer resolution optimization for better frame pacing and reduced input lag
+- **New:** Hardware compatibility section in README - confirms cross-vendor support for all optimizations
+- **Enhanced:** Visual presentation with box-drawing characters and improved section headers
+- **Enhanced:** Intel Arc GPU support documented with manual tweaks
+- **Fixed:** bcdedit timer settings now properly reverted in undo function
+
+### **Version 2.0**
 - Added GPU and storage optimizations (20+ latency tweaks)
 - Added audio latency reduction
 - Added mouse/keyboard input optimizations
