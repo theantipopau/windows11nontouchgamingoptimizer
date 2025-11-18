@@ -2,6 +2,8 @@
 
 **by Matt Hurley**
 
+[GitHub Repository](https://github.com/theantipopau/windows11nontouchgamingoptimizer)
+
 A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gaming performance on non-touchscreen desktops and laptops. All changes are logged and reversible.
 
 ---
@@ -189,6 +191,13 @@ This script does **NOT** disable:
 - Script detects OS version and warns if not Windows 10/11
 - Built-in productivity tools such as **Camera** and **Quick Assist** are kept installed by default
 
+### **Everyday Productivity Compatibility**
+- **Microsoft Teams remains installed** so work/school meetings continue to function
+- Windows Search indexing is left on-demand (not disabled) to keep Start, Outlook, and File Explorer search usable
+- VPN/Remote Access services are preserved for work-from-home scenarios
+- The script does **not** remove Office, browsers, or cloud sync tools such as OneDrive
+- Mouse settings are backed up and restored so personal pointer preferences survive undo operations
+
 ---
 
 ## 🎯 Performance Expectations
@@ -371,8 +380,8 @@ Special thanks to:
 
 ## 📞 Support
 
-- **Issues/Bugs**: [GitHub Issues](https://github.com/yourusername/win11-gaming-optimizer/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/win11-gaming-optimizer/discussions)
+- **Issues/Bugs**: [GitHub Issues](https://github.com/theantipopau/windows11nontouchgamingoptimizer/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/theantipopau/windows11nontouchgamingoptimizer/discussions)
 
 ---
 
