@@ -28,6 +28,10 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 ### **Safety & Convenience**
 - **System Restore Point** - Automatic restore point creation before changes
 - **Comprehensive Logging** - All actions timestamped and logged for audit trail
+- **Registry Backup** - Full backup of all modified registry keys before changes
+- **Laptop Detection** - Warns laptop users about battery impact, offers opt-out
+- **Verification Tool** - Check which optimizations are currently active
+- **Changes Summary** - Clear summary of what was modified after each run
 - **Undo Function** - Revert most changes back to Windows defaults
 - **Optimization Report** - View system specs and applied optimizations
 - **Full & Recommended Modes** - Run all tweaks at once or just the essentials
@@ -58,7 +62,7 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 ## 📋 Menu Options
 
 ### **Quick Actions**
-- **[1 / F]** - FULL OPTIMIZATION (all 12 steps, ~5-10 minutes)
+- **[1 / F]** - FULL OPTIMIZATION (all 15 steps, ~5-10 minutes)
 - **[2]** - RECOMMENDED (core essentials, ~3-5 minutes)
 
 ### **Individual Optimizations**
@@ -78,7 +82,9 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 - **[E]** - Disable Xbox services ⚠️ (breaks Game Bar, requires confirmation)
 
 ### **Utilities**
+- **[H]** - Help / README (comprehensive guide)
 - **[P]** - View optimization report (system info + recommendations)
+- **[V]** - Verify optimizations status (check what's active)
 - **[U]** - UNDO - Revert changes to defaults
 - **[0]** - Exit
 
@@ -105,6 +111,16 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 - Delivery Optimization (P2P updates) disabled
 - Network throttling removed
 
+### **CPU & Memory**
+- **Core parking disabled**: All CPU cores remain active (no parking delays)
+- **Page file optimization**: Auto-configured based on RAM amount
+  - 16GB+ RAM: System-managed page file
+  - 8-15GB RAM: Fixed 4GB page file
+  - Less than 8GB: System-managed (safe default)
+- Memory compression enabled
+- Paging executive disabled
+- RAM-based prefetch tuning
+
 ### **GPU & Graphics**
 - 20+ GPU power state and latency registry tweaks
 - Display post-processing priority increased
@@ -112,11 +128,12 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 - Tips provided for NVIDIA Low Latency Mode and AMD Anti-Lag
 
 ### **Storage**
-- NTFS last access time updates disabled (faster file operations)
+- **Smart detection**: Auto-detects SSD vs HDD
+- **SSD optimizations**: TRIM enabled, defrag disabled, last access updates disabled
+- **HDD optimizations**: Prefetch/Superfetch enabled, scheduled defrag maintained
 - 8.3 filename creation disabled
-- TRIM enabled for SSDs
-- Scheduled defragmentation disabled (better for SSDs)
 - Disk cleanup with DISM component cleanup
+- Page combining disabled on SSDs with 8GB+ RAM
 
 ### **Services & Background Tasks**
 - **Disabled services**: DiagTrack, SysMain (Superfetch), Windows Search (set to manual), telemetry services
@@ -287,6 +304,19 @@ After running optimizations, use option **[P]** to view:
 - Driver update reminders
 - BIOS optimization suggestions
 
+## ✅ Verify Optimizations
+
+Use option **[V]** to check your current optimization status:
+- Power plan verification (High/Ultimate Performance check)
+- Game Mode status
+- GPU hardware scheduling
+- Telemetry service status
+- Animation settings
+- Network TCP optimizations
+- Startup delay configuration
+
+The verification tool shows **[PASS]** or **[WARN]** for each check and displays a percentage score. Use this after Windows updates to ensure tweaks are still active.
+
 ---
 
 ## 🐛 Troubleshooting
@@ -295,6 +325,12 @@ After running optimizations, use option **[P]** to view:
 - Enable System Protection (see Safety Features section)
 - Verify **Volume Shadow Copy** and **Microsoft Software Shadow Copy Provider** services are set to Manual and running
 - You can continue without a restore point (not recommended)
+
+### **Laptop battery warning / power concerns**
+- The script detects laptop chassis types and warns before applying aggressive tweaks
+- **Recommended for laptops:** Use option [2] RECOMMENDED, skip Advanced GPU [C]
+- Power plans can be manually switched back via Windows Settings → System → Power
+- Consider creating a separate "Gaming (Plugged In)" power plan
 
 ### **Script won't run**
 - Right-click → "Run as administrator"
@@ -311,18 +347,20 @@ After running optimizations, use option **[P]** to view:
 
 ---
 
-## 🔄 Update Guide (v2.2)
+## 🔄 Update Guide (v2.4)
 
 1) **Download the new script**: Grab `win11_nontouch_gaming_optimiser.bat` from GitHub and replace your existing copy.
-2) **Run as administrator**: Launch the script; the menu shows version **v2.2**.
-3) **Pick your DVR preference**: When prompted, choose whether to disable Game DVR for a small FPS gain (default is **keep capture on**).
-4) **Recommended run**: Use option **[2] RECOMMENDED** or **[6] Gaming Tweaks** to apply the latest changes.
-5) **Restart**: Reboot to apply all tweaks. If something feels off, use **[U] UNDO** to revert.
+2) **Run as administrator**: Launch the script; the menu shows version **v2.4**.
+3) **Laptop users**: If detected as laptop, you'll see a battery warning with 10-second auto-cancel option.
+4) **Pick your DVR preference**: When prompted, choose whether to disable Game DVR for a small FPS gain (default is **keep capture on**).
+5) **Recommended run**: Use option **[1] FULL** (15 steps) or **[6] Gaming Tweaks** to apply the latest changes.
+6) **Verify**: After restart, use **[V] Verify Optimizations** to check what's active.
 
-What’s new in v2.2 (high level):
-- Game DVR prompt with sane default (keeps Game Bar capture unless you opt out)
-- More reliable hardware detection using PowerShell (WMIC only as fallback)
-- Xbox/Game Bar defaults preserved; policies cleaned up on undo
+What's new in v2.4 (high level):
+- **Intelligent page file** - auto-configured based on your RAM (16GB+ users get managed, 8-15GB get fixed 4GB)
+- **Storage detection** - SSD vs HDD detection with hardware-specific optimizations
+- **Core parking disabled** - all CPU cores active for gaming (no more parking delays)
+- **Smart superfetch** - disabled on fast SSDs, enabled on HDDs for better performance
 
 
 ### **Xbox Game Bar not working**
@@ -343,9 +381,28 @@ What’s new in v2.2 (high level):
 
 ## 📝 Changelog
 
-### **Version 2.2** (Current)
+### **Version 2.4** (Current)
+- **New:** Automatic RAM detection with intelligent page file optimization (16GB+ = managed, 8-15GB = fixed 4GB)
+- **New:** Storage type detection (SSD vs HDD) with hardware-specific optimizations
+- **New:** CPU core parking disabled for maximum gaming performance
+- **New:** RAM-based superfetch tuning - disabled on SSDs with 8GB+ RAM, enabled on HDDs
+- **Enhanced:** Full optimization now includes 15 steps (previously 12)
+- **Enhanced:** Smart storage optimization - TRIM for SSDs, prefetch for HDDs
+- **Performance:** Core parking elimination improves multi-core gaming performance
+- **Performance:** Page file tuning reduces disk I/O based on available RAM
+
+### **Version 2.3**
+- **New:** Laptop detection with battery warning - auto-detects chassis type, warns users about power impact
+- **New:** Comprehensive registry backup - all modified keys backed up before changes to logs folder
+- **New:** Verification tool [V] - check which optimizations are currently active with pass/fail status
+- **New:** Changes summary - displays clear list of applied changes after optimization runs
+- **Enhanced:** Banner now shows chassis type (Desktop/Laptop) for quick identification
+- **Enhanced:** Better error handling and user warnings for safer operations
+- **Safety:** Laptop users get 10-second auto-cancel prompt before aggressive power tweaks
+
+### **Version 2.2**
 - **New:** Game DVR choice prompt with default to keep capture on (Game Bar-friendly)
-- **New:** Report and hardware detection now use PowerShell first, WMIC only as fallback
+- **Enhanced:** Report and hardware detection now use PowerShell first, WMIC only as fallback
 - **Enhanced:** Undo restores Game DVR policy flag alongside Game Bar settings
 - **Docs:** Added quick v2.2 update guide; clarified Game Bar vs DVR behavior
 
