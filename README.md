@@ -23,6 +23,7 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 - **GPU & Storage Optimization** - 20+ GPU latency tweaks, SSD optimizations, TRIM support
 - **Audio Latency Reduction** - High-priority audio processing for gaming and streaming
 - **Mouse/Keyboard Input** - Disable pointer precision, increased polling queue sizes
+- **Visual Effects Options** - Balanced (keeps smooth animations) or Minimal (max FPS)
 - **Optional Xbox Service Disable** - For users who don't use Game Bar or Xbox features (requires confirmation)
 
 ### **Safety & Convenience**
@@ -30,6 +31,7 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 - **Comprehensive Logging** - All actions timestamped and logged for audit trail
 - **Registry Backup** - Full backup of all modified registry keys before changes
 - **Laptop Detection** - Warns laptop users about battery impact, offers opt-out
+- **Hardware Detection** - Correctly identifies discrete GPUs on hybrid systems (iGPU + NVIDIA/AMD)
 - **Verification Tool** - Check which optimizations are currently active
 - **Changes Summary** - Clear summary of what was modified after each run
 - **Undo Function** - Revert most changes back to Windows defaults
@@ -381,7 +383,15 @@ What's new in v2.4 (high level):
 
 ## 📝 Changelog
 
-### **Version 2.4** (Current)
+### **Version 2.5** (Current)
+- **Fixed:** GPU detection now correctly identifies discrete NVIDIA/AMD GPUs on hybrid systems (Intel iGPU + discrete)
+- **Fixed:** CPU name detection improved - no longer shows "Unknown" on multi-word processor names
+- **Fixed:** Verify [V] command power plan check now works correctly
+- **New:** Visual effects optimization menu - choose between Balanced, Minimal, or Skip
+- **Improved:** Balanced mode keeps smooth Windows 11 animations while disabling non-essential effects
+- **Improved:** Gaming machines no longer lose all visual polish by default
+
+### **Version 2.4**
 - **New:** Automatic RAM detection with intelligent page file optimization (16GB+ = managed, 8-15GB = fixed 4GB)
 - **New:** Storage type detection (SSD vs HDD) with hardware-specific optimizations
 - **New:** CPU core parking disabled for maximum gaming performance
