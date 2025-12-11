@@ -385,11 +385,14 @@ What's new in v2.4 (high level):
 
 ### **Version 2.5** (Current)
 - **Fixed:** GPU detection now correctly identifies discrete NVIDIA/AMD GPUs on hybrid systems (Intel iGPU + discrete)
+- **Fixed:** GPU detection excludes virtual adapters (Vivi, Parsec, Remote Desktop, VMware, Hyper-V, etc.)
 - **Fixed:** CPU name detection improved - no longer shows "Unknown" on multi-word processor names
 - **Fixed:** Verify [V] command power plan check now works correctly
+- **Fixed:** All hardware detection now uses PowerShell (WMIC removed in Windows 11 24H2+)
 - **New:** Visual effects optimization menu - choose between Balanced, Minimal, or Skip
 - **Improved:** Balanced mode keeps smooth Windows 11 animations while disabling non-essential effects
 - **Improved:** Gaming machines no longer lose all visual polish by default
+- **Compatibility:** Now works on Windows 11 24H2 and newer builds where WMIC is deprecated
 
 ### **Version 2.4**
 - **New:** Automatic RAM detection with intelligent page file optimization (16GB+ = managed, 8-15GB = fixed 4GB)
@@ -527,4 +530,4 @@ Special thanks to:
 
 ---
 
-*Last updated: November 2025*
+*Last updated: December 2025*
