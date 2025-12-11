@@ -196,6 +196,14 @@ exit /b 0
 :CreateRestorePoint
 call :Log "Creating system restore point"
 echo.
+echo [*] Checking restore point prerequisites...
+call :EnsureShadowServices
+if errorlevel 1 (
+    echo [!] Required services for System Restore are disabled or unavailable.
+    echo     Please enable Volume Shadow Copy and Microsoft Software Shadow Copy Provider, then try again.
+    call :Log "Restore point prerequisites missing"
+    exit /b 1
+)
 echo [*] Creating system restore point...
     "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Try { Checkpoint-Computer -Description 'NonTouchGamingOptimizer' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; exit 0 } Catch { Write-Warning $_; exit 1 }" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
@@ -254,12 +262,6 @@ for %%A in (
     Microsoft.PowerAutomateDesktop
     Microsoft.SkypeApp
     Microsoft.WindowsFeedbackHub
-    Microsoft.Xbox.TCUI
-    Microsoft.XboxApp
-    Microsoft.XboxGameOverlay
-    Microsoft.XboxGamingOverlay
-    Microsoft.XboxIdentityProvider
-    Microsoft.XboxSpeechToTextOverlay
     Microsoft.ZuneMusic
     Microsoft.ZuneVideo
     MicrosoftWindows.Client.WebExperience
@@ -276,6 +278,8 @@ for %%A in (
 ) do (
     call :RemoveApp %%A
 )
+call :Log "Debloat: Game Bar and Xbox app preserved"
+echo [*] Skipping removal of Xbox/Game Bar components to keep overlay and sign-in working.
 call :Log "Debloat routine complete"
 echo.
 echo %CLR_SUCCESS%[+] Debloat complete!%CLR_RESET% Removed consumer/OEM bloatware.
@@ -318,6 +322,17 @@ echo %CLR_TITLE%  ==============================================================
 echo %CLR_TITLE%  ^^|                 GAMING PERFORMANCE TWEAKS                         ^^|%CLR_RESET%
 echo %CLR_TITLE%  ======================================================================%CLR_RESET%
 echo.
+if not defined DVR_PREF_SET (
+    echo [*] Game Bar capture: keep it on, or disable for a small FPS gain?
+    choice /c YN /n /d N /t 5 /m "Disable Game DVR background capture? (Y/N, default=N): "
+    if "%errorlevel%"=="1" (
+        set "DISABLE_DVR=1"
+    ) else (
+        set "DISABLE_DVR=0"
+    )
+    set "DVR_PREF_SET=1"
+)
+call :Log "Gaming tweaks: power plan"
 echo [*] Enabling Ultimate Performance plan (or High Performance fallback)...
 set "UP_GUID="
 for /f "tokens=3" %%G in ('powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2^>nul ^| find /i "GUID"') do set "UP_GUID=%%G"
@@ -335,15 +350,34 @@ if not defined MOUSE_BACKUP_DONE (
 )
 reg add "HKCU\Software\Microsoft\GameBar" /v AllowAutoGameMode /t REG_DWORD /d 1 /f >nul
 reg add "HKCU\Software\Microsoft\GameBar" /v AutoGameModeEnabled /t REG_DWORD /d 1 /f >nul
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR" /v AllowGameDVR /t REG_DWORD /d 0 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v AppCaptureEnabled /t REG_DWORD /d 0 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v GameDVR_Enabled /t REG_DWORD /d 0 /f >nul
+if "%DISABLE_DVR%"=="1" (
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR" /v AllowGameDVR /t REG_DWORD /d 0 /f >nul
+    reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\default\ApplicationManagement\AllowGameDVR" /v value /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v AppCaptureEnabled /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v GameDVR_Enabled /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\System\GameConfigStore" /v GameDVR_Enabled /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\System\GameConfigStore" /v GameDVR_FSEBehaviorMode /t REG_DWORD /d 2 /f >nul
+    reg add "HKCU\System\GameConfigStore" /v GameDVR_HonorUserFSEBehaviorMode /t REG_DWORD /d 1 /f >nul
+    reg add "HKCU\System\GameConfigStore" /v GameDVR_DXGIHonorFSEWindowsCompatible /t REG_DWORD /d 1 /f >nul
+    call :Log "Gaming tweaks: Game DVR disabled by user"
+) else (
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR" /v AllowGameDVR /t REG_DWORD /d 1 /f >nul
+    reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\default\ApplicationManagement\AllowGameDVR" /v value /t REG_DWORD /d 1 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v AppCaptureEnabled /t REG_DWORD /d 1 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v GameDVR_Enabled /t REG_DWORD /d 1 /f >nul
+    reg add "HKCU\System\GameConfigStore" /v GameDVR_Enabled /t REG_DWORD /d 1 /f >nul
+    reg add "HKCU\System\GameConfigStore" /v GameDVR_FSEBehaviorMode /t REG_DWORD /d 2 /f >nul
+    reg add "HKCU\System\GameConfigStore" /v GameDVR_HonorUserFSEBehaviorMode /t REG_DWORD /d 1 /f >nul
+    reg add "HKCU\System\GameConfigStore" /v GameDVR_DXGIHonorFSEWindowsCompatible /t REG_DWORD /d 1 /f >nul
+    call :Log "Gaming tweaks: Game DVR kept enabled for Game Bar capture"
+)
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" /v HwSchMode /t REG_DWORD /d 2 /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 0 /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f >nul
 reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 0 /f >nul
 reg add "HKCU\Control Panel\Desktop" /v WaitToKillAppTimeout /t REG_SZ /d 2000 /f >nul
 reg add "HKCU\Control Panel\Desktop" /v HungAppTimeout /t REG_SZ /d 1000 /f >nul
+call :Log "Gaming tweaks: scheduler priorities"
 
 echo [*] Prioritizing multimedia + game scheduler values...
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v NetworkThrottlingIndex /t REG_DWORD /d 4294967295 /f >nul
@@ -353,11 +387,7 @@ reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProf
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" /v "Scheduling Category" /t REG_SZ /d "High" /f >nul
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" /v "SFIO Priority" /t REG_SZ /d "High" /f >nul
 
-echo [*] Disabling Game Bar and DVR for max FPS...
-reg add "HKCU\System\GameConfigStore" /v GameDVR_Enabled /t REG_DWORD /d 0 /f >nul
-reg add "HKCU\System\GameConfigStore" /v GameDVR_FSEBehaviorMode /t REG_DWORD /d 2 /f >nul
-reg add "HKCU\System\GameConfigStore" /v GameDVR_HonorUserFSEBehaviorMode /t REG_DWORD /d 1 /f >nul
-reg add "HKCU\System\GameConfigStore" /v GameDVR_DXGIHonorFSEWindowsCompatible /t REG_DWORD /d 1 /f >nul
+call :Log "Gaming tweaks: latency + input"
 
 echo [*] Optimizing for low latency and high throughput...
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" /v "Latency Sensitive" /t REG_SZ /d "True" /f >nul
@@ -373,15 +403,17 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Services\kbdclass\Parameters" /v Keyboard
 
 echo [*] Enabling full Game Mode stack...
 reg add "HKCU\Software\Microsoft\GameBar" /v UseNexusForGameBarEnabled /t REG_DWORD /d 0 /f >nul
-reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\default\ApplicationManagement\AllowGameDVR" /v value /t REG_DWORD /d 0 /f >nul
 
 echo [*] Optimizing system timer resolution for better frame pacing...
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel" /v GlobalTimerResolutionRequests /t REG_DWORD /d 1 /f >nul
-bcdedit /set useplatformclock true >nul 2>&1
-bcdedit /set disabledynamictick yes >nul 2>&1
+for %%B in ("useplatformclock true" "disabledynamictick yes") do (
+    bcdedit /set %%~B >nul 2>&1
+    if errorlevel 1 call :Log "Warning: bcdedit /set %%~B failed"
+)
 
 echo [*] Prioritizing foreground apps (games) over background tasks...
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 38 /f >nul
+call :Log "Gaming tweaks: telemetry disable"
 
 sc stop "DiagTrack" >nul 2>&1
 sc config "DiagTrack" start= disabled >nul 2>&1
@@ -829,7 +861,7 @@ echo.
 echo   %CLR_WARNING%IMPORTANT NOTES:%CLR_RESET%
 echo   - Restart PC after optimizations for full effect
 echo   - Option [E] breaks Xbox Game Bar - only use if you don't need it
-echo   - Game DVR is disabled, but Game Bar (Win+G) still works
+echo   - Game DVR prompt: choose to keep capture on (default) or disable for FPS
 echo   - Windows Defender and Firewall are NOT disabled
 echo   - Check README.md for manual GPU tweaks (NVIDIA/AMD)
 echo.
@@ -868,17 +900,19 @@ echo ========================================================================
 echo   %CLR_TITLE%OPTIMIZATION REPORT%CLR_RESET%
 echo ========================================================================
 echo.
-echo   Script version: 2.1 - Gaming Edition
+echo   Script version: 2.2 - Gaming Edition
 echo   Log file: %LOG_FILE%
 echo.
 echo   %CLR_SUBTITLE%System Information:%CLR_RESET%
-for /f "tokens=2 delims==" %%I in ('wmic os get TotalVisibleMemorySize /value') do set "TOTAL_RAM=%%I"
-if defined TOTAL_RAM (
-    set /a "RAM_GB=TOTAL_RAM/1024/1024"
-    echo   - RAM: !RAM_GB! GB
-)
-for /f "tokens=2 delims==" %%I in ('wmic cpu get Name /value') do echo   - CPU: %%I
-for /f "tokens=2 delims==" %%I in ('wmic path win32_VideoController get Name /value') do echo   - GPU: %%I
+set "TOTAL_RAM="
+for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { [int]([Math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB),0)) } catch { '' }"`) do set "TOTAL_RAM=%%I"
+if defined TOTAL_RAM echo   - RAM: !TOTAL_RAM! GB
+set "CPU_INFO="
+for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name) } catch { '' }"`) do set "CPU_INFO=%%I"
+if defined CPU_INFO echo   - CPU: !CPU_INFO!
+set "GPU_INFO="
+for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_VideoController | Where-Object { $_.Name } | Select-Object -First 1 -ExpandProperty Name) } catch { '' }"`) do set "GPU_INFO=%%I"
+if defined GPU_INFO echo   - GPU: !GPU_INFO!
 echo.
 echo   %CLR_SUBTITLE%Active Optimizations (check log for details):%CLR_RESET%
 findstr /C:"applied" /C:"complete" /C:"disabled" /C:"optimized" "%LOG_FILE%" | find /C ":" >nul && (
@@ -931,6 +965,7 @@ for %%K in (EnableAutocorrection EnableTextPrediction EnableSpellchecking) do (
 )
 reg add "HKCU\Software\Microsoft\GameBar" /v AllowAutoGameMode /t REG_DWORD /d 1 /f >nul
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR" /v AllowGameDVR /t REG_DWORD /d 1 /f >nul
+reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\default\ApplicationManagement\AllowGameDVR" /v value /t REG_DWORD /d 1 /f >nul
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v AppCaptureEnabled /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" /v GameDVR_Enabled /f >nul 2>&1
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 2 /f >nul
@@ -958,8 +993,8 @@ exit /b 0
 set "PKG=%~1"
 if not defined PKG exit /b 0
 call :Log "Removing %PKG%"
-"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Get-AppxPackage -AllUsers -Name %PKG% ^| Remove-AppxPackage -ErrorAction SilentlyContinue" >> "%LOG_FILE%" 2>&1
-"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Get-AppxProvisionedPackage -Online ^| Where-Object { $_.DisplayName -eq '%PKG%' } ^| Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue" >> "%LOG_FILE%" 2>&1
+"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Get-AppxPackage -AllUsers -Name %PKG% | Remove-AppxPackage -ErrorAction SilentlyContinue | Out-Null" >> "%LOG_FILE%" 2>&1
+"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq '%PKG%' } | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Out-Null" >> "%LOG_FILE%" 2>&1
 exit /b 0
 
 :DetectOS
@@ -983,27 +1018,70 @@ exit /b 0
 :DetectHardware
 set "GPU_VENDOR=Unknown"
 set "CPU_VENDOR=Unknown"
-for /f "tokens=2 delims==" %%I in ('wmic path win32_VideoController get Name /value 2^>nul') do (
-    set "GPU_NAME=%%I"
-    echo %%I | findstr /I "NVIDIA" >nul && set "GPU_VENDOR=NVIDIA"
-    echo %%I | findstr /I "AMD Radeon" >nul && set "GPU_VENDOR=AMD Radeon"
-    echo %%I | findstr /I "Intel" >nul && set "GPU_VENDOR=Intel Graphics"
-    echo %%I | findstr /I "Arc" >nul && set "GPU_VENDOR=Intel Arc"
+set "GPU_RAW="
+set "CPU_RAW="
+for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_VideoController | Where-Object { $_.Name } | Select-Object -First 1 -ExpandProperty Name) } catch { '' }"`) do (
+    if not "%%I"=="" if not defined GPU_RAW set "GPU_RAW=%%I"
 )
-for /f "tokens=2 delims==" %%I in ('wmic cpu get Name /value 2^>nul') do (
-    set "CPU_NAME=%%I"
-    echo %%I | findstr /I "Intel" >nul && set "CPU_VENDOR=Intel"
-    echo %%I | findstr /I "AMD Ryzen" >nul && set "CPU_VENDOR=AMD Ryzen"
-    echo %%I | findstr /I "AMD" >nul && set "CPU_VENDOR=AMD"
+if not defined GPU_RAW (
+    for /f "tokens=2 delims==" %%I in ('wmic path win32_VideoController get Name /value 2^>nul') do (
+        if not "%%I"=="" if not defined GPU_RAW set "GPU_RAW=%%~I"
+    )
+)
+if defined GPU_RAW (
+    set "GPU_TEXT=!GPU_RAW!"
+    for /f "tokens=*" %%T in ("!GPU_TEXT!") do set "GPU_TEXT=%%T"
+    echo(!GPU_TEXT!| findstr /I "NVIDIA" >nul && set "GPU_VENDOR=NVIDIA"
+    echo(!GPU_TEXT!| findstr /I "AMD" >nul && set "GPU_VENDOR=AMD"
+    echo(!GPU_TEXT!| findstr /I "Radeon" >nul && set "GPU_VENDOR=AMD Radeon"
+    echo(!GPU_TEXT!| findstr /I "Intel" >nul && set "GPU_VENDOR=Intel Graphics"
+    echo(!GPU_TEXT!| findstr /I "Arc" >nul && set "GPU_VENDOR=Intel Arc"
+    if /I "!GPU_VENDOR!"=="Unknown" set "GPU_VENDOR=!GPU_TEXT!"
+    call :Log "GPU detected raw: !GPU_TEXT!"
+)
+for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name) } catch { '' }"`) do (
+    if not "%%I"=="" if not defined CPU_RAW set "CPU_RAW=%%I"
+)
+if not defined CPU_RAW (
+    for /f "tokens=2 delims==" %%I in ('wmic cpu get Name /value 2^>nul') do (
+        if not "%%I"=="" if not defined CPU_RAW set "CPU_RAW=%%~I"
+    )
+)
+if defined CPU_RAW (
+    set "CPU_TEXT=!CPU_RAW!"
+    for /f "tokens=*" %%T in ("!CPU_TEXT!") do set "CPU_TEXT=%%T"
+    echo(!CPU_TEXT!| findstr /I "Intel" >nul && set "CPU_VENDOR=Intel"
+    echo(!CPU_TEXT!| findstr /I "AMD Ryzen" >nul && set "CPU_VENDOR=AMD Ryzen"
+    echo(!CPU_TEXT!| findstr /I "AMD" >nul && set "CPU_VENDOR=AMD"
+    if /I "!CPU_VENDOR!"=="Unknown" set "CPU_VENDOR=!CPU_TEXT!"
+    call :Log "CPU detected raw: !CPU_TEXT!"
 )
 call :Log "Hardware detected: GPU=%GPU_VENDOR%, CPU=%CPU_VENDOR%"
+exit /b 0
+
+:EnsureShadowServices
+set "ENSURE_SHADOW_ERROR="
+for %%S in (VSS swprv) do (
+    sc query %%S >nul 2>&1
+    if errorlevel 1 (
+        call :Log "Shadow copy service %%S missing or inaccessible"
+        set "ENSURE_SHADOW_ERROR=1"
+    ) else (
+        sc config %%S start= demand >nul 2>&1
+        sc start %%S >nul 2>&1
+    )
+)
+if defined ENSURE_SHADOW_ERROR (
+    set "ENSURE_SHADOW_ERROR="
+    exit /b 1
+)
 exit /b 0
 
 :Banner
 if defined CLR_TITLE (
     echo %CLR_TITLE%  ================================================================%CLR_RESET%
     echo %CLR_TITLE%                                                                  %CLR_RESET%
-    echo %CLR_TITLE%           WINDOWS 11 GAMING OPTIMIZER v2.1                      %CLR_RESET%
+    echo %CLR_TITLE%           WINDOWS 11 GAMING OPTIMIZER v2.2                      %CLR_RESET%
     echo %CLR_TITLE%                                                                  %CLR_RESET%
     echo %CLR_TITLE%  ================================================================%CLR_RESET%
     echo %CLR_SUBTITLE%                         by Matt Hurley%CLR_RESET%
@@ -1017,7 +1095,7 @@ if defined CLR_TITLE (
     echo %CLR_TITLE%  ================================================================%CLR_RESET%
 ) else (
     echo   ================================================================
-    echo    Windows 11 Non-Touch Gaming Optimizer v2.1
+    echo    Windows 11 Non-Touch Gaming Optimizer v2.2
     echo                    by Matt Hurley
     echo   ----------------------------------------------------------------
     echo   Maximize FPS ^| Reduce Latency ^| Optimize Performance
