@@ -58,6 +58,10 @@ call :Log "=== Windows 11 Non-Touch Gaming Optimizer started ==="
 
 call :DetectOS
 call :DetectHardware
+call :DetectChassisType
+call :DetectRAM
+call :DetectStorageType
+set "CHANGES_SUMMARY="
 call :Log "Initialization complete - entering menu"
 
 :Menu
@@ -88,6 +92,7 @@ echo    %CLR_MENU%[E]%CLR_RESET% Optional: Disable Xbox services (breaks Game Ba
 echo.
 echo    %CLR_MENU%[H]%CLR_RESET% Help / README
 echo    %CLR_MENU%[P]%CLR_RESET% View optimization report
+echo    %CLR_MENU%[V]%CLR_RESET% Verify optimizations status
 echo    %CLR_MENU%[U]%CLR_RESET% UNDO - Revert key changes
 echo    %CLR_MENU%[0]%CLR_RESET% Exit
 echo.
@@ -110,6 +115,7 @@ if /I "%choice%"=="D" call :OptimizeAudio & call :PauseReturn & goto Menu
 if /I "%choice%"=="E" call :DisableXboxServices & call :PauseReturn & goto Menu
 if /I "%choice%"=="H" call :ShowHelp & call :PauseReturn & goto Menu
 if /I "%choice%"=="P" call :ShowReport & call :PauseReturn & goto Menu
+if /I "%choice%"=="V" call :VerifyOptimizations & call :PauseReturn & goto Menu
 if /I "%choice%"=="U" call :UndoChanges & call :PauseReturn & goto Menu
 if "%choice%"=="0" goto End
 echo.
@@ -130,37 +136,44 @@ echo.
 call :CreateRestorePoint
 if errorlevel 1 exit /b 1
 echo.
-echo [*] Step 1/10: Removing consumer apps...
+echo [*] Step 1/15: Removing consumer apps...
 call :Debloat
-echo [*] Step 2/10: Disabling touch/pen components...
+echo [*] Step 2/15: Disabling touch/pen components...
 call :DisableTouchFeatures
-echo [*] Step 3/10: Applying gaming tweaks...
+echo [*] Step 3/15: Applying gaming tweaks...
 call :ApplyGamingTweaks
-echo [*] Step 4/10: Optimizing services and telemetry...
+echo [*] Step 4/15: Optimizing services and telemetry...
 call :OptimizeServices
-echo [*] Step 5/10: Applying network optimizations...
+echo [*] Step 5/15: Applying network optimizations...
 call :ApplyNetworkTweaks
-echo [*] Step 6/10: Disabling animations...
+echo [*] Step 6/15: Optimizing visual effects...
 call :DisableAnimations
-echo [*] Step 7/10: Optimizing startup...
+echo [*] Step 7/15: Optimizing startup...
 call :OptimizeStartup
-echo [*] Step 8/12: Freeing disk space...
+echo [*] Step 8/15: Freeing disk space...
 call :FreeDiskSpace
-echo [*] Step 9/12: GPU and storage optimizations...
+echo [*] Step 9/15: GPU and storage optimizations...
 set "AUTO_ADVANCED_CONFIRM=1"
 call :AdvancedGPUStorage
 set "AUTO_ADVANCED_CONFIRM="
-echo [*] Step 10/12: Audio latency reduction...
+echo [*] Step 10/15: Audio latency reduction...
 call :OptimizeAudio
-echo [*] Step 11/12: Finalizing memory optimizations...
+echo [*] Step 11/15: Finalizing memory optimizations...
 call :OptimizeMemory
-echo [*] Step 12/12: Complete!
+echo [*] Step 12/15: Optimizing page file...
+call :OptimizePageFile
+echo [*] Step 13/15: Disabling CPU core parking...
+call :DisableCoreParking
+echo [*] Step 14/15: Tuning storage-specific settings...
+call :OptimizeStorageByType
+echo [*] Step 15/15: Complete!
 echo.
 echo ========================================================================
 echo   %CLR_SUCCESS%FULL OPTIMIZATION COMPLETE!%CLR_RESET%
 echo   Please %CLR_WARNING%RESTART%CLR_RESET% your device for all changes to take effect.
 echo ========================================================================
 call :Log "Full optimization sequence completed"
+call :ShowChangesSummary
 exit /b 0
 
 :RunRecommended
@@ -191,6 +204,7 @@ echo   %CLR_SUCCESS%RECOMMENDED OPTIMIZATION COMPLETE!%CLR_RESET%
 echo   Please %CLR_WARNING%RESTART%CLR_RESET% your device for all changes to take effect.
 echo ========================================================================
 call :Log "Recommended optimization sequence completed"
+call :ShowChangesSummary
 exit /b 0
 
 :CreateRestorePoint
@@ -240,6 +254,7 @@ if errorlevel 1 (
 exit /b 0
 
 :Debloat
+call :BackupRegistryKeys
 call :Log "Starting debloat routine"
 echo.
 echo ========================================================================
@@ -281,6 +296,7 @@ for %%A in (
 call :Log "Debloat: Game Bar and Xbox app preserved"
 echo [*] Skipping removal of Xbox/Game Bar components to keep overlay and sign-in working.
 call :Log "Debloat routine complete"
+call :AddToSummary "Bloatware removed"
 echo.
 echo %CLR_SUCCESS%[+] Debloat complete!%CLR_RESET% Removed consumer/OEM bloatware.
 echo     Log: %LOG_FILE%
@@ -310,12 +326,14 @@ reg add "HKCU\Software\Microsoft\TabletTip\1.7" /v EnableSpellchecking /t REG_DW
 reg add "HKCU\Software\Microsoft\Wisp\Pen\SysEventParameters" /v FlicksEnabled /t REG_DWORD /d 0 /f >nul
 reg add "HKCU\Software\Microsoft\Wisp\Touch" /v TouchGate /t REG_DWORD /d 0 /f >nul
 call :Log "Touch/pen features disabled"
+call :AddToSummary "Touch/pen features disabled"
 echo.
 echo %CLR_SUCCESS%[+] Touch and pen components disabled!%CLR_RESET%
 echo     Log: %LOG_FILE%
 exit /b 0
 
 :ApplyGamingTweaks
+call :BackupRegistryKeys
 call :Log "Applying gaming tweaks"
 echo.
 echo %CLR_TITLE%  ======================================================================%CLR_RESET%
@@ -419,6 +437,7 @@ sc stop "DiagTrack" >nul 2>&1
 sc config "DiagTrack" start= disabled >nul 2>&1
 
 call :Log "Gaming tweaks applied"
+call :AddToSummary "Gaming performance tweaks"
 echo.
 echo %CLR_SUCCESS%[+] Gaming optimizations applied!%CLR_RESET% FPS and responsiveness improved.
 if /I "%GPU_VENDOR%"=="NVIDIA" (
@@ -471,6 +490,7 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" /v Enab
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableSoftLanding /t REG_DWORD /d 1 /f >nul
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableWindowsSpotlightFeatures /t REG_DWORD /d 1 /f >nul
 call :Log "Service/telemetry optimizations complete"
+call :AddToSummary "Services optimized"
 echo.
 echo %CLR_SUCCESS%[+] Services optimized!%CLR_RESET% Background CPU/RAM usage reduced.
 echo     Log: %LOG_FILE%
@@ -536,6 +556,7 @@ reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v DOMax
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" /v TcpAckFrequency /t REG_DWORD /d 1 /f >nul 2>&1
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" /v TCPNoDelay /t REG_DWORD /d 1 /f >nul 2>&1
 call :Log "Network tweaks applied"
+call :AddToSummary "Network optimized"
 echo.
 echo %CLR_SUCCESS%[+] Network tweaks applied!%CLR_RESET% Lower latency and improved throughput.
 echo     Log: %LOG_FILE%
@@ -574,28 +595,73 @@ echo     Log: %LOG_FILE%
 exit /b 0
 
 :DisableAnimations
-call :Log "Disabling animations"
+call :Log "Animations menu"
 echo.
 echo ========================================================================
-echo   %CLR_TITLE%DISABLING ANIMATIONS AND VISUAL EFFECTS%CLR_RESET%
+echo   %CLR_TITLE%VISUAL EFFECTS OPTIMIZATION%CLR_RESET%
 echo ========================================================================
 echo.
-echo [*] Disabling animations for maximum responsiveness...
-reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 0 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarAnimations /t REG_DWORD /d 0 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 3 /f >nul
-reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012038010000000 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\DWM" /v EnableAeroPeek /t REG_DWORD /d 0 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\DWM" /v AlwaysHibernateThumbnails /t REG_DWORD /d 0 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ListviewAlphaSelect /t REG_DWORD /d 0 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ListviewShadow /t REG_DWORD /d 0 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarMn /t REG_DWORD /d 0 /f >nul
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v DisallowShaking /t REG_DWORD /d 1 /f >nul
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarDa /t REG_DWORD /d 0 /f >nul
-call :Log "Animations disabled"
+echo   Your system has capable hardware. Choose your preference:
 echo.
-echo %CLR_SUCCESS%[+] Animations disabled!%CLR_RESET% UI responsiveness improved.
-echo     Restart Explorer for immediate effect: taskkill /f /im explorer.exe ^& start explorer.exe
+echo   %CLR_MENU%[1]%CLR_RESET% BALANCED (Recommended) - Keep smooth animations, disable extras
+echo       Keeps: Window animations, taskbar effects, transparency
+echo       Disables: Aero Peek, thumbnail previews, listview effects
+echo.
+echo   %CLR_MENU%[2]%CLR_RESET% MINIMAL - Disable most animations for max FPS
+echo       Disables most visual effects for raw performance
+echo.
+echo   %CLR_MENU%[3]%CLR_RESET% SKIP - Keep current Windows settings
+echo.
+choice /c 123 /n /d 1 /t 15 /m "Select option (auto-selects Balanced in 15s): "
+set "ANIM_CHOICE=%errorlevel%"
+
+if "%ANIM_CHOICE%"=="3" (
+    echo.
+    echo [*] Skipping visual effects changes.
+    call :Log "User skipped animation changes"
+    exit /b 0
+)
+
+if "%ANIM_CHOICE%"=="1" (
+    echo.
+    echo [*] Applying BALANCED visual settings...
+    REM Keep animations but disable extras
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarAnimations /t REG_DWORD /d 1 /f >nul
+    reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 1 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 3 /f >nul
+    REM Disable non-essential extras
+    reg add "HKCU\Software\Microsoft\Windows\DWM" /v EnableAeroPeek /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\DWM" /v AlwaysHibernateThumbnails /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ListviewAlphaSelect /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ListviewShadow /t REG_DWORD /d 0 /f >nul
+    reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v DisallowShaking /t REG_DWORD /d 1 /f >nul
+    REM Keep transparency and smooth scrolling
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 1 /f >nul
+    call :Log "Balanced visual settings applied"
+    call :AddToSummary "Visual effects: Balanced"
+    echo.
+    echo %CLR_SUCCESS%[+] Balanced visuals applied!%CLR_RESET% Smooth Windows 11 experience preserved.
+) else (
+    echo.
+    echo [*] Applying MINIMAL visual settings for max FPS...
+    reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarAnimations /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 3 /f >nul
+    reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012038010000000 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\DWM" /v EnableAeroPeek /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\DWM" /v AlwaysHibernateThumbnails /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ListviewAlphaSelect /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ListviewShadow /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarMn /t REG_DWORD /d 0 /f >nul
+    reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v DisallowShaking /t REG_DWORD /d 1 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarDa /t REG_DWORD /d 0 /f >nul
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 0 /f >nul
+    call :Log "Minimal animations applied"
+    call :AddToSummary "Visual effects: Minimal"
+    echo.
+    echo %CLR_SUCCESS%[+] Minimal visuals applied!%CLR_RESET% Maximum FPS mode.
+    echo     Restart Explorer for immediate effect: taskkill /f /im explorer.exe ^& start explorer.exe
+)
 echo     Log: %LOG_FILE%
 exit /b 0
 
@@ -671,6 +737,74 @@ pushd "%TARGET%" >nul 2>&1 || exit /b 0
 del /f /s /q *.* >nul 2>&1
 for /d %%D in (*) do rd /s /q "%%D" >nul 2>&1
 popd >nul 2>&1
+exit /b 0
+
+:OptimizePageFile
+call :Log "Optimizing page file based on RAM=%RAM_GB%GB"
+echo [*] Configuring page file based on system RAM...
+if not defined RAM_GB (
+    echo [*] RAM not detected, skipping page file optimization
+    call :Log "Page file optimization skipped - RAM not detected"
+    exit /b 0
+)
+if %RAM_GB% GEQ 16 (
+    echo     System RAM: %RAM_GB%GB - Setting managed page file
+    wmic computersystem where name="%computername%" set AutomaticManagedPagefile=True >nul 2>&1
+    call :Log "Page file: Managed (16GB+ RAM detected)"
+    call :AddToSummary "Page file optimized for %RAM_GB%GB RAM"
+) else if %RAM_GB% GEQ 8 (
+    echo     System RAM: %RAM_GB%GB - Setting fixed page file (4GB)
+    wmic pagefileset where name="C:\\pagefile.sys" set InitialSize=4096,MaximumSize=4096 >nul 2>&1
+    call :Log "Page file: Fixed 4GB (8-15GB RAM detected)"
+    call :AddToSummary "Page file fixed at 4GB"
+) else (
+    echo     System RAM: %RAM_GB%GB - Keeping system-managed page file
+    call :Log "Page file: System-managed (less than 8GB RAM)"
+)
+exit /b 0
+
+:DisableCoreParking
+call :Log "Disabling CPU core parking"
+echo [*] Disabling CPU core parking for better gaming performance...
+for /f %%G in ('powercfg /getactivescheme ^| findstr /C:"Power Scheme GUID"') do set "SCHEME_GUID=%%G"
+if not defined SCHEME_GUID (
+    call :Log "Warning: Could not get active power scheme GUID"
+    exit /b 0
+)
+powercfg -setacvalueindex %SCHEME_GUID% SUB_PROCESSOR CPMINCORES 100 >nul 2>&1
+powercfg -setactive %SCHEME_GUID% >nul 2>&1
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583" /v ValueMax /t REG_DWORD /d 0 /f >nul
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583" /v ValueMin /t REG_DWORD /d 0 /f >nul
+call :Log "Core parking disabled"
+call :AddToSummary "CPU core parking disabled"
+exit /b 0
+
+:OptimizeStorageByType
+call :Log "Optimizing storage by type: %STORAGE_TYPE%"
+echo [*] Applying storage-specific optimizations...
+if /I "%STORAGE_TYPE%"=="SSD" (
+    echo     Storage: SSD detected - Optimizing for solid state
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v NtfsDisableLastAccessUpdate /t REG_DWORD /d 1 /f >nul
+    fsutil behavior set DisableDeleteNotify 0 >nul 2>&1
+    schtasks /Change /TN "\Microsoft\Windows\Defrag\ScheduledDefrag" /Disable >nul 2>&1
+    if %RAM_GB% GEQ 8 (
+        PowerShell -NoProfile -Command "Disable-MMAgent -PageCombining" >nul 2>&1
+        call :Log "SSD: TRIM enabled, defrag disabled, page combining off"
+    ) else (
+        call :Log "SSD: TRIM enabled, defrag disabled"
+    )
+    call :AddToSummary "SSD optimizations applied"
+) else if /I "%STORAGE_TYPE%"=="HDD" (
+    echo     Storage: HDD detected - Enabling prefetch
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters" /v EnablePrefetcher /t REG_DWORD /d 3 /f >nul
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters" /v EnableSuperfetch /t REG_DWORD /d 3 /f >nul
+    schtasks /Change /TN "\Microsoft\Windows\Defrag\ScheduledDefrag" /Enable >nul 2>&1
+    call :Log "HDD: Prefetch enabled, defrag scheduled"
+    call :AddToSummary "HDD optimizations applied"
+) else (
+    echo     Storage: Unknown type - Applying safe defaults
+    call :Log "Storage type unknown, skipping type-specific optimizations"
+)
 exit /b 0
 
 :AdvancedGPUStorage
@@ -900,7 +1034,7 @@ echo ========================================================================
 echo   %CLR_TITLE%OPTIMIZATION REPORT%CLR_RESET%
 echo ========================================================================
 echo.
-echo   Script version: 2.2 - Gaming Edition
+echo   Script version: 2.5 - Gaming Edition
 echo   Log file: %LOG_FILE%
 echo.
 echo   %CLR_SUBTITLE%System Information:%CLR_RESET%
@@ -908,10 +1042,10 @@ set "TOTAL_RAM="
 for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { [int]([Math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB),0)) } catch { '' }"`) do set "TOTAL_RAM=%%I"
 if defined TOTAL_RAM echo   - RAM: !TOTAL_RAM! GB
 set "CPU_INFO="
-for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name) } catch { '' }"`) do set "CPU_INFO=%%I"
+for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim() } catch { '' }"`) do set "CPU_INFO=%%I"
 if defined CPU_INFO echo   - CPU: !CPU_INFO!
 set "GPU_INFO="
-for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_VideoController | Where-Object { $_.Name } | Select-Object -First 1 -ExpandProperty Name) } catch { '' }"`) do set "GPU_INFO=%%I"
+for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { $gpus = Get-CimInstance Win32_VideoController ^| Where-Object { $_.Name -and $_.Name -notmatch 'Vivi^|Microsoft Basic^|Remote Desktop^|Virtual^|Parsec^|VMware^|Hyper-V' }; $discrete = $gpus ^| Where-Object { $_.Name -match 'NVIDIA^|AMD^|Radeon^|GeForce^|RTX^|GTX' } ^| Select-Object -First 1; if ($discrete) { $discrete.Name.Trim() } elseif ($gpus) { ($gpus ^| Select-Object -First 1).Name.Trim() } else { '' } } catch { '' }"`) do set "GPU_INFO=%%I"
 if defined GPU_INFO echo   - GPU: !GPU_INFO!
 echo.
 echo   %CLR_SUBTITLE%Active Optimizations (check log for details):%CLR_RESET%
@@ -1020,41 +1154,51 @@ set "GPU_VENDOR=Unknown"
 set "CPU_VENDOR=Unknown"
 set "GPU_RAW="
 set "CPU_RAW="
-for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_VideoController | Where-Object { $_.Name } | Select-Object -First 1 -ExpandProperty Name) } catch { '' }"`) do (
-    if not "%%I"=="" if not defined GPU_RAW set "GPU_RAW=%%I"
+
+REM === GPU Detection - PowerShell, prefer discrete GPU ===
+REM First try to find NVIDIA
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'NVIDIA' } | Select-Object -First 1 -ExpandProperty Name"`) do (
+    set "GPU_RAW=%%I"
 )
+REM If no NVIDIA, try AMD
 if not defined GPU_RAW (
-    for /f "tokens=2 delims==" %%I in ('wmic path win32_VideoController get Name /value 2^>nul') do (
-        if not "%%I"=="" if not defined GPU_RAW set "GPU_RAW=%%~I"
+    for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'AMD|Radeon' } | Select-Object -First 1 -ExpandProperty Name"`) do (
+        set "GPU_RAW=%%I"
+    )
+)
+REM If no AMD, try Intel Arc
+if not defined GPU_RAW (
+    for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'Arc' } | Select-Object -First 1 -ExpandProperty Name"`) do (
+        set "GPU_RAW=%%I"
+    )
+)
+REM Fallback to any non-virtual Intel GPU
+if not defined GPU_RAW (
+    for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'Intel' -and $_.Name -notmatch 'Virtual|Remote|Vivi|Sharing' } | Select-Object -First 1 -ExpandProperty Name"`) do (
+        set "GPU_RAW=%%I"
     )
 )
 if defined GPU_RAW (
-    set "GPU_TEXT=!GPU_RAW!"
-    for /f "tokens=*" %%T in ("!GPU_TEXT!") do set "GPU_TEXT=%%T"
-    echo(!GPU_TEXT!| findstr /I "NVIDIA" >nul && set "GPU_VENDOR=NVIDIA"
-    echo(!GPU_TEXT!| findstr /I "AMD" >nul && set "GPU_VENDOR=AMD"
-    echo(!GPU_TEXT!| findstr /I "Radeon" >nul && set "GPU_VENDOR=AMD Radeon"
-    echo(!GPU_TEXT!| findstr /I "Intel" >nul && set "GPU_VENDOR=Intel Graphics"
-    echo(!GPU_TEXT!| findstr /I "Arc" >nul && set "GPU_VENDOR=Intel Arc"
-    if /I "!GPU_VENDOR!"=="Unknown" set "GPU_VENDOR=!GPU_TEXT!"
-    call :Log "GPU detected raw: !GPU_TEXT!"
-)
-for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name) } catch { '' }"`) do (
-    if not "%%I"=="" if not defined CPU_RAW set "CPU_RAW=%%I"
-)
-if not defined CPU_RAW (
-    for /f "tokens=2 delims==" %%I in ('wmic cpu get Name /value 2^>nul') do (
-        if not "%%I"=="" if not defined CPU_RAW set "CPU_RAW=%%~I"
+    echo !GPU_RAW! | findstr /I "NVIDIA GeForce RTX GTX" >nul && set "GPU_VENDOR=NVIDIA"
+    echo !GPU_RAW! | findstr /I "AMD Radeon" >nul && set "GPU_VENDOR=AMD Radeon"
+    echo !GPU_RAW! | findstr /I "Arc" >nul && set "GPU_VENDOR=Intel Arc"
+    if "!GPU_VENDOR!"=="Unknown" (
+        echo !GPU_RAW! | findstr /I "Intel" >nul && set "GPU_VENDOR=Intel Graphics"
     )
+    if "!GPU_VENDOR!"=="Unknown" set "GPU_VENDOR=!GPU_RAW!"
+    call :Log "GPU detected raw: !GPU_RAW!"
+)
+
+REM === CPU Detection - PowerShell ===
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name"`) do (
+    set "CPU_RAW=%%I"
 )
 if defined CPU_RAW (
-    set "CPU_TEXT=!CPU_RAW!"
-    for /f "tokens=*" %%T in ("!CPU_TEXT!") do set "CPU_TEXT=%%T"
-    echo(!CPU_TEXT!| findstr /I "Intel" >nul && set "CPU_VENDOR=Intel"
-    echo(!CPU_TEXT!| findstr /I "AMD Ryzen" >nul && set "CPU_VENDOR=AMD Ryzen"
-    echo(!CPU_TEXT!| findstr /I "AMD" >nul && set "CPU_VENDOR=AMD"
-    if /I "!CPU_VENDOR!"=="Unknown" set "CPU_VENDOR=!CPU_TEXT!"
-    call :Log "CPU detected raw: !CPU_TEXT!"
+    echo !CPU_RAW! | findstr /I "Intel" >nul && set "CPU_VENDOR=Intel"
+    echo !CPU_RAW! | findstr /I "AMD Ryzen" >nul && set "CPU_VENDOR=AMD Ryzen"
+    echo !CPU_RAW! | findstr /I "AMD" >nul && if "!CPU_VENDOR!"=="Unknown" set "CPU_VENDOR=AMD"
+    if "!CPU_VENDOR!"=="Unknown" set "CPU_VENDOR=!CPU_RAW!"
+    call :Log "CPU detected raw: !CPU_RAW!"
 )
 call :Log "Hardware detected: GPU=%GPU_VENDOR%, CPU=%CPU_VENDOR%"
 exit /b 0
@@ -1081,7 +1225,7 @@ exit /b 0
 if defined CLR_TITLE (
     echo %CLR_TITLE%  ================================================================%CLR_RESET%
     echo %CLR_TITLE%                                                                  %CLR_RESET%
-    echo %CLR_TITLE%           WINDOWS 11 GAMING OPTIMIZER v2.2                      %CLR_RESET%
+    echo %CLR_TITLE%           WINDOWS 11 GAMING OPTIMIZER v2.5                      %CLR_RESET%
     echo %CLR_TITLE%                                                                  %CLR_RESET%
     echo %CLR_TITLE%  ================================================================%CLR_RESET%
     echo %CLR_SUBTITLE%                         by Matt Hurley%CLR_RESET%
@@ -1089,13 +1233,14 @@ if defined CLR_TITLE (
     echo   %CLR_SUCCESS%[*]%CLR_RESET% Maximize FPS ^| Reduce Latency ^| Optimize Performance
     if defined GPU_VENDOR echo   %CLR_SUCCESS%[*]%CLR_RESET% Detected GPU: %GPU_VENDOR%
     if defined CPU_VENDOR echo   %CLR_SUCCESS%[*]%CLR_RESET% Detected CPU: %CPU_VENDOR%
+    if "%IS_LAPTOP%"=="1" echo   %CLR_WARNING%[!]%CLR_RESET% System Type: %CHASSIS_TYPE% - Battery impact warning enabled
     echo   %CLR_WARNING%[!]%CLR_RESET% Run as administrator. Changes logged to:
     echo       %LOG_FILE%
-    echo   %CLR_SUBTITLE%[H] Help/README ^| [P] Report ^| [U] Undo Changes%CLR_RESET%
+    echo   %CLR_SUBTITLE%[H] Help/README ^| [P] Report ^| [V] Verify ^| [U] Undo%CLR_RESET%
     echo %CLR_TITLE%  ================================================================%CLR_RESET%
 ) else (
     echo   ================================================================
-    echo    Windows 11 Non-Touch Gaming Optimizer v2.2
+    echo    Windows 11 Non-Touch Gaming Optimizer v2.5
     echo                    by Matt Hurley
     echo   ----------------------------------------------------------------
     echo   Maximize FPS ^| Reduce Latency ^| Optimize Performance
@@ -1149,6 +1294,252 @@ if not %errorlevel%==0 (
     pause
     exit /b 1
 )
+exit /b 0
+
+:DetectChassisType
+set "CHASSIS_TYPE=Unknown"
+set "IS_LAPTOP=0"
+set "CHASSIS_CODE="
+REM PowerShell for chassis detection
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes[0]"`) do (
+    set "CHASSIS_CODE=%%I"
+)
+if defined CHASSIS_CODE (
+    if "%CHASSIS_CODE%"=="8" set "CHASSIS_TYPE=Laptop" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="9" set "CHASSIS_TYPE=Laptop" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="10" set "CHASSIS_TYPE=Laptop" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="11" set "CHASSIS_TYPE=Laptop" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="14" set "CHASSIS_TYPE=Laptop" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="18" set "CHASSIS_TYPE=Laptop" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="21" set "CHASSIS_TYPE=Laptop" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="30" set "CHASSIS_TYPE=Tablet" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="31" set "CHASSIS_TYPE=Convertible" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="32" set "CHASSIS_TYPE=Detachable" & set "IS_LAPTOP=1"
+    if "%CHASSIS_CODE%"=="3" set "CHASSIS_TYPE=Desktop"
+    if "%CHASSIS_CODE%"=="4" set "CHASSIS_TYPE=Desktop"
+    if "%CHASSIS_CODE%"=="5" set "CHASSIS_TYPE=Desktop"
+    if "%CHASSIS_CODE%"=="6" set "CHASSIS_TYPE=Desktop"
+    if "%CHASSIS_CODE%"=="7" set "CHASSIS_TYPE=Desktop"
+    if "%CHASSIS_CODE%"=="15" set "CHASSIS_TYPE=Desktop"
+    if "%CHASSIS_CODE%"=="16" set "CHASSIS_TYPE=Desktop"
+)
+call :Log "Chassis type: %CHASSIS_TYPE% (code %CHASSIS_CODE%, laptop=%IS_LAPTOP%)"
+if "%IS_LAPTOP%"=="1" (
+    echo.
+    echo %CLR_WARNING%  ================================================================%CLR_RESET%
+    echo %CLR_WARNING%  [!] LAPTOP DETECTED%CLR_RESET%
+    echo %CLR_WARNING%  ================================================================%CLR_RESET%
+    echo   This optimizer applies aggressive power tweaks that may:
+    echo   - Significantly reduce battery life
+    echo   - Increase heat and fan noise
+    echo   - Disable power-saving features
+    echo.
+    echo   %CLR_SUCCESS%Recommended for laptops:%CLR_RESET%
+    echo   - Only run while plugged in
+    echo   - Use option [2] RECOMMENDED instead of FULL
+    echo   - Skip GPU/Storage advanced tweaks [C]
+    echo   - Consider creating a separate power plan for gaming
+    echo %CLR_WARNING%  ================================================================%CLR_RESET%
+    echo.
+    choice /c YN /n /t 10 /d N /m "Continue with optimization on laptop? (Y/N, auto-No in 10s): "
+    if not "%errorlevel%"=="1" (
+        call :Log "User cancelled - laptop warning"
+        echo.
+        echo [!] Optimization cancelled. Exiting to protect battery life.
+        timeout /t 3 >nul
+        exit /b 1
+    )
+    call :Log "User accepted laptop warning, proceeding"
+)
+exit /b 0
+
+:DetectRAM
+set "RAM_GB="
+REM PowerShell for RAM detection
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "[int]([Math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB),0))"`) do (
+    set "RAM_GB=%%I"
+)
+if defined RAM_GB (
+    call :Log "Detected RAM: %RAM_GB% GB"
+) else (
+    call :Log "Warning: Could not detect RAM amount"
+)
+exit /b 0
+
+:DetectStorageType
+set "STORAGE_TYPE=Unknown"
+REM PowerShell for storage detection
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "$d = Get-PhysicalDisk | Where-Object { $_.DeviceID -eq '0' }; if ($d) { $d.MediaType } else { 'Unknown' }"`) do (
+    if "%%I"=="SSD" set "STORAGE_TYPE=SSD"
+    if "%%I"=="HDD" set "STORAGE_TYPE=HDD"
+)
+call :Log "Detected storage type: %STORAGE_TYPE%"
+exit /b 0
+
+:BackupRegistryKeys
+if exist "%LOG_DIR%\registry_backup_%STAMP%.reg" exit /b 0
+call :Log "Creating comprehensive registry backup"
+echo [*] Creating registry backup before changes...
+set "BACKUP_FILE=%LOG_DIR%\registry_backup_%STAMP%.reg"
+(
+    echo Windows Registry Editor Version 5.00
+    echo.
+    echo ; Gaming Optimizer Registry Backup - %STAMP%
+    echo ; Backed up before modifications
+    echo.
+) > "%BACKUP_FILE%"
+reg export "HKCU\Control Panel\Mouse" "%LOG_DIR%\backup_mouse_%STAMP%.reg" /y >nul 2>&1
+reg export "HKCU\Software\Microsoft\GameBar" "%LOG_DIR%\backup_gamebar_%STAMP%.reg" /y >nul 2>&1
+reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" "%LOG_DIR%\backup_gamedvr_%STAMP%.reg" /y >nul 2>&1
+reg export "HKCU\System\GameConfigStore" "%LOG_DIR%\backup_gameconfig_%STAMP%.reg" /y >nul 2>&1
+reg export "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "%LOG_DIR%\backup_multimedia_%STAMP%.reg" /y >nul 2>&1
+reg export "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" "%LOG_DIR%\backup_priority_%STAMP%.reg" /y >nul 2>&1
+reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" "%LOG_DIR%\backup_visualfx_%STAMP%.reg" /y >nul 2>&1
+reg export "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "%LOG_DIR%\backup_telemetry_%STAMP%.reg" /y >nul 2>&1
+call :Log "Registry backup complete: %LOG_DIR%\backup_*_%STAMP%.reg"
+echo %CLR_SUCCESS%[+] Registry backed up to logs folder%CLR_RESET%
+exit /b 0
+
+:AddToSummary
+set "SUMMARY_ITEM=%~1"
+if not defined CHANGES_SUMMARY (
+    set "CHANGES_SUMMARY=%SUMMARY_ITEM%"
+) else (
+    set "CHANGES_SUMMARY=%CHANGES_SUMMARY%|%SUMMARY_ITEM%"
+)
+exit /b 0
+
+:ShowChangesSummary
+if not defined CHANGES_SUMMARY (
+    echo.
+    echo [*] No changes were applied in this session.
+    exit /b 0
+)
+echo.
+echo ========================================================================
+echo   %CLR_TITLE%CHANGES APPLIED THIS SESSION%CLR_RESET%
+echo ========================================================================
+echo.
+for %%I in (%CHANGES_SUMMARY:|= %) do (
+    echo   %CLR_SUCCESS%[+]%CLR_RESET% %%I
+)
+echo.
+echo ========================================================================
+echo   %CLR_WARNING%IMPORTANT:%CLR_RESET% Restart your PC for all changes to take effect
+echo   Backup location: %LOG_DIR%
+echo   Restore options: [U] Undo or System Restore
+echo ========================================================================
+call :Log "Changes summary displayed to user"
+exit /b 0
+
+:VerifyOptimizations
+call :Log "Running verification check"
+cls
+echo.
+echo ========================================================================
+echo   %CLR_TITLE%OPTIMIZATION VERIFICATION%CLR_RESET%
+echo ========================================================================
+echo.
+echo   Checking current system state...
+echo.
+set "VERIFY_PASS=0"
+set "VERIFY_FAIL=0"
+
+echo   %CLR_SUBTITLE%Power Plan:%CLR_RESET%
+set "POWER_PLAN_OK=0"
+for /f "tokens=*" %%G in ('powercfg /getactivescheme') do (
+    echo %%G | findstr /I "Ultimate High Performance" >nul && set "POWER_PLAN_OK=1"
+)
+if "%POWER_PLAN_OK%"=="1" (
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% High/Ultimate Performance plan active
+    set /a VERIFY_PASS+=1
+) else (
+    echo     %CLR_WARNING%[WARN]%CLR_RESET% Power plan not optimized
+    set /a VERIFY_FAIL+=1
+)
+
+echo.
+echo   %CLR_SUBTITLE%Game Mode:%CLR_RESET%
+reg query "HKCU\Software\Microsoft\GameBar" /v AutoGameModeEnabled 2>nul | findstr "0x1" >nul
+if not errorlevel 1 (
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% Game Mode enabled
+    set /a VERIFY_PASS+=1
+) else (
+    echo     %CLR_WARNING%[WARN]%CLR_RESET% Game Mode not enabled
+    set /a VERIFY_FAIL+=1
+)
+
+echo.
+echo   %CLR_SUBTITLE%GPU Scheduling:%CLR_RESET%
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" /v HwSchMode 2>nul | findstr "0x2" >nul
+if not errorlevel 1 (
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% Hardware-accelerated GPU scheduling enabled
+    set /a VERIFY_PASS+=1
+) else (
+    echo     %CLR_WARNING%[WARN]%CLR_RESET% GPU scheduling not enabled
+    set /a VERIFY_FAIL+=1
+)
+
+echo.
+echo   %CLR_SUBTITLE%Telemetry:%CLR_RESET%
+sc query DiagTrack | findstr "STOPPED" >nul 2>&1
+if not errorlevel 1 (
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% Diagnostic tracking disabled
+    set /a VERIFY_PASS+=1
+) else (
+    echo     %CLR_WARNING%[WARN]%CLR_RESET% Diagnostic tracking still running
+    set /a VERIFY_FAIL+=1
+)
+
+echo.
+echo   %CLR_SUBTITLE%Animations:%CLR_RESET%
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarAnimations 2>nul | findstr "0x0" >nul
+if not errorlevel 1 (
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% Taskbar animations disabled
+    set /a VERIFY_PASS+=1
+) else (
+    echo     %CLR_WARNING%[WARN]%CLR_RESET% Animations still enabled
+    set /a VERIFY_FAIL+=1
+)
+
+echo.
+echo   %CLR_SUBTITLE%Network:%CLR_RESET%
+reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v TcpNoDelay 2>nul | findstr "0x1" >nul
+if not errorlevel 1 (
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% TCP optimizations applied
+    set /a VERIFY_PASS+=1
+) else (
+    echo     %CLR_WARNING%[WARN]%CLR_RESET% Network not optimized
+    set /a VERIFY_FAIL+=1
+)
+
+echo.
+echo   %CLR_SUBTITLE%Startup:%CLR_RESET%
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize" /v StartupDelayInMSec 2>nul | findstr "0x0" >nul
+if not errorlevel 1 (
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% Startup delay removed
+    set /a VERIFY_PASS+=1
+) else (
+    echo     %CLR_WARNING%[WARN]%CLR_RESET% Startup delay present
+    set /a VERIFY_FAIL+=1
+)
+
+echo.
+echo ========================================================================
+echo   %CLR_TITLE%VERIFICATION SUMMARY%CLR_RESET%
+echo ========================================================================
+echo.
+set /a VERIFY_TOTAL=VERIFY_PASS+VERIFY_FAIL
+set /a VERIFY_PCT=(VERIFY_PASS*100)/VERIFY_TOTAL
+echo   Checks Passed: %CLR_SUCCESS%[%VERIFY_PASS%/%VERIFY_TOTAL%]%CLR_RESET% (%VERIFY_PCT%%%)
+if %VERIFY_FAIL% GTR 0 (
+    echo   Checks Failed: %CLR_WARNING%[%VERIFY_FAIL%/%VERIFY_TOTAL%]%CLR_RESET%
+    echo.
+    echo   %CLR_WARNING%Recommendation:%CLR_RESET% Run option [2] RECOMMENDED or [6] Gaming Tweaks
+)
+echo.
+echo ========================================================================
+call :Log "Verification: %VERIFY_PASS% passed, %VERIFY_FAIL% failed"
 exit /b 0
 
 :Log
