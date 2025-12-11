@@ -125,7 +125,7 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 - Advertising ID and cloud content disabled
 
 ### **Bloatware Removed**
-Consumer apps: Bing News/Weather/Finance, Clipchamp, GetHelp, Office Hub, Solitaire, Sticky Notes, Xbox TCUI, Skype, Teams, TikTok, Spotify, Facebook, Disney+, and more
+Consumer apps: Bing News/Weather/Finance, Clipchamp, GetHelp, Office Hub, Solitaire, Sticky Notes, Skype, Teams, TikTok, Spotify, Facebook, Disney+, and more. Xbox/Game Bar components are preserved so the overlay continues to work.
 
 ### **Visual Effects**
 - Transparency disabled
@@ -145,6 +145,9 @@ The script attempts to create a restore point before making changes. If System P
 2. Select C: drive → Configure
 3. Enable "Turn on system protection"
 4. Allocate 2-5GB space
+
+If you see a message about a service being disabled, open **services.msc** and set both **Volume Shadow Copy** and **Microsoft Software Shadow Copy Provider** to **Manual** (start them if necessary), then rerun option [3].
+The optimizer automatically attempts to start these services whenever it creates a restore point, but it cannot recover if they are removed or blocked by policy.
 
 ### **Comprehensive Logging**
 All actions are logged with timestamps to:
@@ -290,6 +293,7 @@ After running optimizations, use option **[P]** to view:
 
 ### **"Restore point creation failed"**
 - Enable System Protection (see Safety Features section)
+- Verify **Volume Shadow Copy** and **Microsoft Software Shadow Copy Provider** services are set to Manual and running
 - You can continue without a restore point (not recommended)
 
 ### **Script won't run**
@@ -304,6 +308,22 @@ After running optimizations, use option **[P]** to view:
 1. Use option **[U]** to undo changes
 2. Restart your PC
 3. If issues persist, use System Restore to restore point created in step 3
+
+---
+
+## 🔄 Update Guide (v2.2)
+
+1) **Download the new script**: Grab `win11_nontouch_gaming_optimiser.bat` from GitHub and replace your existing copy.
+2) **Run as administrator**: Launch the script; the menu shows version **v2.2**.
+3) **Pick your DVR preference**: When prompted, choose whether to disable Game DVR for a small FPS gain (default is **keep capture on**).
+4) **Recommended run**: Use option **[2] RECOMMENDED** or **[6] Gaming Tweaks** to apply the latest changes.
+5) **Restart**: Reboot to apply all tweaks. If something feels off, use **[U] UNDO** to revert.
+
+What’s new in v2.2 (high level):
+- Game DVR prompt with sane default (keeps Game Bar capture unless you opt out)
+- More reliable hardware detection using PowerShell (WMIC only as fallback)
+- Xbox/Game Bar defaults preserved; policies cleaned up on undo
+
 
 ### **Xbox Game Bar not working**
 - If you ran option **[E]** to disable Xbox services, use option **[U]** to re-enable them
@@ -323,7 +343,13 @@ After running optimizations, use option **[P]** to view:
 
 ## 📝 Changelog
 
-### **Version 2.1** (Current)
+### **Version 2.2** (Current)
+- **New:** Game DVR choice prompt with default to keep capture on (Game Bar-friendly)
+- **New:** Report and hardware detection now use PowerShell first, WMIC only as fallback
+- **Enhanced:** Undo restores Game DVR policy flag alongside Game Bar settings
+- **Docs:** Added quick v2.2 update guide; clarified Game Bar vs DVR behavior
+
+### **Version 2.1**
 - **New:** Hardware detection - automatically detects GPU vendor (NVIDIA/AMD/Intel Arc) and CPU vendor (Intel/AMD)
 - **New:** Vendor-specific tips displayed after gaming tweaks (Low Latency Mode, Anti-Lag, XeSS)
 - **New:** Enhanced ASCII banner with "GAMING OPT" title art
