@@ -141,6 +141,8 @@ call :Debloat
 echo [*] Step 2/15: Disabling touch/pen components...
 call :DisableTouchFeatures
 echo [*] Step 3/15: Applying gaming tweaks...
+call :WarnIfOnBattery
+if errorlevel 1 exit /b 1
 call :ApplyGamingTweaks
 echo [*] Step 4/15: Optimizing services and telemetry...
 call :OptimizeServices
@@ -189,15 +191,21 @@ echo.
 call :CreateRestorePoint
 if errorlevel 1 exit /b 1
 echo.
-echo [*] Step 1/5: Removing consumer apps...
+echo [*] Step 1/7: Removing consumer apps...
 call :Debloat
-echo [*] Step 2/5: Applying gaming tweaks...
+echo [*] Step 2/7: Applying gaming tweaks...
+call :WarnIfOnBattery
+if errorlevel 1 exit /b 1
 call :ApplyGamingTweaks
-echo [*] Step 3/5: Optimizing services...
+echo [*] Step 3/7: Optimizing services...
 call :OptimizeServices
-echo [*] Step 4/5: Disabling animations...
+echo [*] Step 4/7: Applying network optimizations...
+call :ApplyNetworkTweaksSafe
+echo [*] Step 5/7: Optimizing visual effects...
 call :DisableAnimations
-echo [*] Step 5/5: Finalizing...
+echo [*] Step 6/7: Disabling CPU core parking...
+call :DisableCoreParking
+echo [*] Step 7/7: Finalizing...
 echo.
 echo ========================================================================
 echo   %CLR_SUCCESS%RECOMMENDED OPTIMIZATION COMPLETE!%CLR_RESET%
@@ -212,32 +220,61 @@ call :Log "Creating system restore point"
 echo.
 echo [*] Checking restore point prerequisites...
 call :EnsureShadowServices
-if errorlevel 1 (
-    echo [!] Required services for System Restore are disabled or unavailable.
-    echo     Please enable Volume Shadow Copy and Microsoft Software Shadow Copy Provider, then try again.
+echo    %CLR_MENU%[1]%CLR_RESET% Apply SAFE network tweaks (recommended)
+echo    %CLR_MENU%[2]%CLR_RESET% Apply AGGRESSIVE network tweaks (may affect VPN/throughput)
+echo    %CLR_MENU%[3]%CLR_RESET% Revert network tweaks to Windows defaults
+echo    %CLR_MENU%[4]%CLR_RESET% Return to main menu
     call :Log "Restore point prerequisites missing"
     exit /b 1
-)
+choice /c 1234 /n /m "Select an option: "
 echo [*] Creating system restore point...
     "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Try { Checkpoint-Computer -Description 'NonTouchGamingOptimizer' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; exit 0 } Catch { Write-Warning $_; exit 1 }" >> "%LOG_FILE%" 2>&1
-if errorlevel 1 (
+    call :ApplyNetworkTweaksSafe
     echo.
     echo ========================================================================
     echo   [!] SYSTEM RESTORE POINT FAILED
     echo ========================================================================
-    echo   Reason: System Protection may not be enabled on this drive.
+    call :ApplyNetworkTweaks
     echo.
     echo   To enable System Protection:
     echo   1. Open Control Panel ^> System ^> System Protection
     echo   2. Select your C: drive and click "Configure"
-    echo   3. Enable "Turn on system protection"
-    echo   4. Allocate at least 2-5GB of disk space
-    echo   5. Click OK and try running this script again
-    echo ========================================================================
+    call :RevertNetworkTweaks
+    call :PauseReturn
+    goto NetworkOptions
+)
+if "%netopt%"=="4" exit /b 0
     echo.
         call :Log "Restore point creation failed"
         echo.
         choice /c YN /n /m "Continue without a restore point? (Y/N): "
+
+:ApplyNetworkTweaksSafe
+call :Log "Applying SAFE network tweaks"
+echo.
+echo ========================================================================
+echo   %CLR_TITLE%APPLYING SAFE NETWORK OPTIMIZATIONS%CLR_RESET%
+echo ========================================================================
+echo.
+echo [*] Applying low-risk tweaks for gaming (keeps Windows TCP defaults)...
+REM Keep global netsh defaults to reduce compatibility issues; apply only latency-friendly knobs.
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v TcpNoDelay /t REG_DWORD /d 1 /f >nul
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v TcpAckFrequency /t REG_DWORD /d 1 /f >nul
+
+REM Delivery Optimization (P2P updates) off for latency + bandwidth stability
+sc stop DoSvc >nul 2>&1
+sc config DoSvc start= disabled >nul 2>&1
+for %%T in ("\Microsoft\Windows\Delivery Optimization\Maintenance" "\Microsoft\Windows\Delivery Optimization\Download") do (
+    schtasks /Change /TN %%~T /Disable >nul 2>&1
+)
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v DODownloadMode /t REG_DWORD /d 0 /f >nul
+
+call :Log "SAFE network tweaks applied"
+call :AddToSummary "Network optimized (safe)"
+echo.
+echo %CLR_SUCCESS%[+] Safe network tweaks applied!%CLR_RESET% Low risk, good baseline.
+echo     Log: %LOG_FILE%
+exit /b 0
         if errorlevel 2 (
             echo.
             echo [!] Operation cancelled. Please enable System Protection and rerun the script.
@@ -424,9 +461,10 @@ reg add "HKCU\Software\Microsoft\GameBar" /v UseNexusForGameBarEnabled /t REG_DW
 
 echo [*] Optimizing system timer resolution for better frame pacing...
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel" /v GlobalTimerResolutionRequests /t REG_DWORD /d 1 /f >nul
+REM bcdedit changes - can cause issues on some systems, proceed with caution
 for %%B in ("useplatformclock true" "disabledynamictick yes") do (
     bcdedit /set %%~B >nul 2>&1
-    if errorlevel 1 call :Log "Warning: bcdedit /set %%~B failed"
+    if errorlevel 1 call :Log "Warning: bcdedit /set %%~B failed - may require Secure Boot disabled"
 )
 
 echo [*] Prioritizing foreground apps (games) over background tasks...
@@ -687,6 +725,7 @@ Dism /Online /Disable-Feature /FeatureName:Printing-XPSServices-Features /NoRest
 Dism /Online /Disable-Feature /FeatureName:WorkFolders-Client /NoRestart /Quiet >nul 2>&1
 Dism /Online /Disable-Feature /FeatureName:FaxServicesClientPackage /NoRestart /Quiet >nul 2>&1
 call :Log "Startup optimized"
+call :AddToSummary "Startup optimized"
 echo.
 echo %CLR_SUCCESS%[+] Startup optimized!%CLR_RESET% Boot time and responsiveness improved.
 echo     Log: %LOG_FILE%
@@ -702,6 +741,9 @@ echo.
 echo [*] Clearing temporary files and reclaiming disk space...
 powercfg /h off >nul 2>&1
 call :Log "Hibernation disabled"
+if "!CHASSIS_TYPE!"=="Laptop" (
+    echo     %CLR_WARNING%[NOTE] Hibernation disabled - re-enable with: powercfg /h on%CLR_RESET%
+)
 call :ClearTemp "%TEMP%"
 if defined LOCALAPPDATA call :ClearTemp "%LOCALAPPDATA%\Temp"
 call :ClearTemp "%SystemRoot%\Temp"
@@ -713,6 +755,7 @@ net start wuauserv >nul 2>&1
 net start bits >nul 2>&1
 "%SystemRoot%\System32\dism.exe" /Online /Cleanup-Image /StartComponentCleanup >> "%LOG_FILE%" 2>&1
 call :Log "Disk cleanup complete"
+call :AddToSummary "Disk space freed"
 echo.
 echo %CLR_SUCCESS%[+] Disk cleanup complete!%CLR_RESET% Temporary files removed.
 echo     Log: %LOG_FILE%
@@ -721,11 +764,19 @@ exit /b 0
 :OptimizeMemory
 call :Log "Optimizing memory"
 echo [*] Enabling memory compression and optimizing paging...
-PowerShell -NoProfile -ExecutionPolicy Bypass -Command "Enable-MMAgent -MemoryCompression" >nul 2>&1
+if defined RAM_GB (
+    if %RAM_GB% LSS 8 (
+        echo     %CLR_WARNING%[!] WARNING: Low RAM detected (%RAM_GB%GB). DisablePagingExecutive may cause instability.%CLR_RESET%
+        echo     %CLR_WARNING%    Consider adding more RAM for better gaming performance.%CLR_RESET%
+        call :Log "Low RAM warning: %RAM_GB%GB detected - DisablePagingExecutive may cause issues"
+    )
+)
+"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Enable-MMAgent -MemoryCompression" >nul 2>&1
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" /v DisablePagingExecutive /t REG_DWORD /d 1 /f >nul
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" /v LargeSystemCache /t REG_DWORD /d 0 /f >nul
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" /v ClearPageFileAtShutdown /t REG_DWORD /d 0 /f >nul
 call :Log "Memory optimizations applied"
+call :AddToSummary "Memory optimizations applied"
 exit /b 0
 
 :ClearTemp
@@ -749,27 +800,34 @@ if not defined RAM_GB (
 )
 if %RAM_GB% GEQ 16 (
     echo     System RAM: %RAM_GB%GB - Setting managed page file
-    wmic computersystem where name="%computername%" set AutomaticManagedPagefile=True >nul 2>&1
+    "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "$cs = Get-CimInstance Win32_ComputerSystem; $cs | Set-CimInstance -Property @{AutomaticManagedPagefile=$true}" >nul 2>&1
+    if errorlevel 1 call :Log "Warning: Failed enabling automatic managed page file"
     call :Log "Page file: Managed (16GB+ RAM detected)"
     call :AddToSummary "Page file optimized for %RAM_GB%GB RAM"
 ) else if %RAM_GB% GEQ 8 (
     echo     System RAM: %RAM_GB%GB - Setting fixed page file (4GB)
-    wmic pagefileset where name="C:\\pagefile.sys" set InitialSize=4096,MaximumSize=4096 >nul 2>&1
+    REM Win32_PageFileSetting may not exist when automatic management is enabled; set via CIM + registry for reliability.
+    "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "$cs = Get-CimInstance Win32_ComputerSystem; $cs | Set-CimInstance -Property @{AutomaticManagedPagefile=$false}; Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name PagingFiles -Value @('C:\\pagefile.sys 4096 4096')" >nul 2>&1
+    if errorlevel 1 call :Log "Warning: Failed setting fixed page file size"
     call :Log "Page file: Fixed 4GB (8-15GB RAM detected)"
     call :AddToSummary "Page file fixed at 4GB"
 ) else (
     echo     System RAM: %RAM_GB%GB - Keeping system-managed page file
-    call :Log "Page file: System-managed (less than 8GB RAM)"
+    echo     %CLR_WARNING%[!] Low RAM detected - consider adding more RAM for gaming%CLR_RESET%
+    "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "$cs = Get-CimInstance Win32_ComputerSystem; $cs | Set-CimInstance -Property @{AutomaticManagedPagefile=$true}" >nul 2>&1
+    if errorlevel 1 call :Log "Warning: Failed enabling automatic managed page file (low RAM path)"
+    call :Log "Page file: System-managed (less than 8GB RAM) - LOW RAM WARNING"
 )
 exit /b 0
 
 :DisableCoreParking
 call :Log "Disabling CPU core parking"
 echo [*] Disabling CPU core parking for better gaming performance...
-for /f %%G in ('powercfg /getactivescheme ^| findstr /C:"Power Scheme GUID"') do set "SCHEME_GUID=%%G"
+REM Extract the actual GUID from powercfg output (format: "Power Scheme GUID: 12345678-1234-...")
+for /f "tokens=4" %%G in ('powercfg /getactivescheme 2^>nul ^| findstr "GUID"') do set "SCHEME_GUID=%%G"
 if not defined SCHEME_GUID (
-    call :Log "Warning: Could not get active power scheme GUID"
-    exit /b 0
+    call :Log "Warning: Could not get active power scheme GUID, using default"
+    set "SCHEME_GUID=SCHEME_CURRENT"
 )
 powercfg -setacvalueindex %SCHEME_GUID% SUB_PROCESSOR CPMINCORES 100 >nul 2>&1
 powercfg -setactive %SCHEME_GUID% >nul 2>&1
@@ -788,7 +846,7 @@ if /I "%STORAGE_TYPE%"=="SSD" (
     fsutil behavior set DisableDeleteNotify 0 >nul 2>&1
     schtasks /Change /TN "\Microsoft\Windows\Defrag\ScheduledDefrag" /Disable >nul 2>&1
     if %RAM_GB% GEQ 8 (
-        PowerShell -NoProfile -Command "Disable-MMAgent -PageCombining" >nul 2>&1
+        "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Disable-MMAgent -PageCombining" >nul 2>&1
         call :Log "SSD: TRIM enabled, defrag disabled, page combining off"
     ) else (
         call :Log "SSD: TRIM enabled, defrag disabled"
@@ -888,6 +946,7 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Services\AudioSrv" /v DependOnService /t 
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\Audiosrv" /v Start /t REG_DWORD /d 2 /f >nul
 
 call :Log "Audio latency optimizations applied"
+call :AddToSummary "Audio latency optimized"
 echo.
 echo %CLR_SUCCESS%[+] Audio latency reduced!%CLR_RESET% Lower audio buffer delay.
 echo     %CLR_WARNING%Tip:%CLR_RESET% In Sound settings, enable Exclusive Mode for gaming headset.
@@ -960,8 +1019,8 @@ echo   2. Select [2] for "Recommended" optimization (3-5 min)
 echo   3. Restart your PC
 echo.
 echo   %CLR_SUBTITLE%MENU OPTIONS:%CLR_RESET%
-echo   [1/F] Full Optimization  - All tweaks (5-10 min, 12 steps)
-echo   [2]   Recommended        - Core essentials only (3-5 min, 5 steps)
+echo   [1/F] Full Optimization  - All tweaks (5-10 min, 15 steps)
+echo   [2]   Recommended        - Core essentials only (3-5 min, 7 steps)
 echo   [3]   Restore Point      - Create safety restore point
 echo   [4]   Debloat            - Remove consumer/OEM apps
 echo   [5]   Touch Disable      - Remove touch/pen/ink features
@@ -1301,7 +1360,7 @@ set "CHASSIS_TYPE=Unknown"
 set "IS_LAPTOP=0"
 set "CHASSIS_CODE="
 REM PowerShell for chassis detection
-for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes[0]"`) do (
+for /f "usebackq delims=" %%I in (`"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes[0]"`) do (
     set "CHASSIS_CODE=%%I"
 )
 if defined CHASSIS_CODE (
@@ -1353,10 +1412,41 @@ if "%IS_LAPTOP%"=="1" (
 )
 exit /b 0
 
+:WarnIfOnBattery
+REM If this is a laptop and it is currently discharging on battery, warn before applying aggressive CPU/power tweaks.
+if /I not "%CHASSIS_TYPE%"=="Laptop" exit /b 0
+
+set "BAT_STATUS="
+for /f "usebackq delims=" %%B in (`"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "$b=Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1; if($b){$b.BatteryStatus}else{''}"`) do set "BAT_STATUS=%%B"
+if not defined BAT_STATUS exit /b 0
+
+REM BatteryStatus: 1=Discharging, 2=AC, 3=Fully Charged (AC)
+if "%BAT_STATUS%"=="1" (
+    echo.
+    echo ========================================================================
+    echo   %CLR_WARNING%LAPTOP ON BATTERY DETECTED%CLR_RESET%
+    echo ========================================================================
+    echo   You're running on battery power. Applying performance power settings
+    echo   and core parking changes can increase drain/heat.
+    echo.
+    echo   %CLR_WARNING%Recommendation:%CLR_RESET% Plug in AC power, then rerun.
+    echo.
+    choice /c YN /n /t 10 /d N /m "Continue anyway? (Y/N, auto-No in 10s): "
+    if not "%errorlevel%"=="1" (
+        call :Log "User aborted due to on-battery warning"
+        echo.
+        echo [!] Optimization cancelled. Plug in power and try again.
+        timeout /t 3 >nul
+        exit /b 1
+    )
+    call :Log "User continued despite on-battery warning"
+)
+exit /b 0
+
 :DetectRAM
 set "RAM_GB="
 REM PowerShell for RAM detection
-for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "[int]([Math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB),0))"`) do (
+for /f "usebackq delims=" %%I in (`"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "[int]([Math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB),0))"`) do (
     set "RAM_GB=%%I"
 )
 if defined RAM_GB (
@@ -1369,7 +1459,7 @@ exit /b 0
 :DetectStorageType
 set "STORAGE_TYPE=Unknown"
 REM PowerShell for storage detection
-for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "$d = Get-PhysicalDisk | Where-Object { $_.DeviceID -eq '0' }; if ($d) { $d.MediaType } else { 'Unknown' }"`) do (
+for /f "usebackq delims=" %%I in (`"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "$d = Get-PhysicalDisk | Where-Object { $_.DeviceID -eq '0' }; if ($d) { $d.MediaType } else { 'Unknown' }"`) do (
     if "%%I"=="SSD" set "STORAGE_TYPE=SSD"
     if "%%I"=="HDD" set "STORAGE_TYPE=HDD"
 )
@@ -1455,6 +1545,7 @@ if "%POWER_PLAN_OK%"=="1" (
     set /a VERIFY_PASS+=1
 ) else (
     echo     %CLR_WARNING%[WARN]%CLR_RESET% Power plan not optimized
+    for /f "tokens=*" %%G in ('powercfg /getactivescheme 2^>nul') do echo     Current: %%G
     set /a VERIFY_FAIL+=1
 )
 
@@ -1492,13 +1583,13 @@ if not errorlevel 1 (
 )
 
 echo.
-echo   %CLR_SUBTITLE%Animations:%CLR_RESET%
-reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarAnimations 2>nul | findstr "0x0" >nul
+echo   %CLR_SUBTITLE%Visual Effects:%CLR_RESET%
+reg query "HKCU\Software\Microsoft\Windows\DWM" /v EnableAeroPeek 2>nul | findstr "0x0" >nul
 if not errorlevel 1 (
-    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% Taskbar animations disabled
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% Visual effects optimized (Aero Peek disabled)
     set /a VERIFY_PASS+=1
 ) else (
-    echo     %CLR_WARNING%[WARN]%CLR_RESET% Animations still enabled
+    echo     %CLR_WARNING%[WARN]%CLR_RESET% Visual effects not optimized
     set /a VERIFY_FAIL+=1
 )
 
@@ -1510,6 +1601,9 @@ if not errorlevel 1 (
     set /a VERIFY_PASS+=1
 ) else (
     echo     %CLR_WARNING%[WARN]%CLR_RESET% Network not optimized
+    for %%V in (TcpNoDelay TcpAckFrequency) do (
+        for /f "tokens=*" %%R in ('reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v %%V 2^>nul') do echo     %%R
+    )
     set /a VERIFY_FAIL+=1
 )
 
@@ -1521,6 +1615,23 @@ if not errorlevel 1 (
     set /a VERIFY_PASS+=1
 ) else (
     echo     %CLR_WARNING%[WARN]%CLR_RESET% Startup delay present
+    set /a VERIFY_FAIL+=1
+)
+
+echo.
+echo   %CLR_SUBTITLE%Core Parking:%CLR_RESET%
+set "COREPARK_OK=0"
+set "COREPARK_LINE="
+for /f "tokens=*" %%L in ('powercfg -query SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 2^>nul ^| findstr /I "Current AC Power Setting Index"') do (
+    set "COREPARK_LINE=%%L"
+    echo %%L | findstr /I "0x00000064" >nul && set "COREPARK_OK=1"
+)
+if "%COREPARK_OK%"=="1" (
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% CPU core parking disabled (CPMINCORES=100)
+    set /a VERIFY_PASS+=1
+) else (
+    echo     %CLR_WARNING%[WARN]%CLR_RESET% Core parking may still be active
+    if defined COREPARK_LINE echo     Current: %COREPARK_LINE%
     set /a VERIFY_FAIL+=1
 )
 

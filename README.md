@@ -65,7 +65,7 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 
 ### **Quick Actions**
 - **[1 / F]** - FULL OPTIMIZATION (all 15 steps, ~5-10 minutes)
-- **[2]** - RECOMMENDED (core essentials, ~3-5 minutes)
+- **[2]** - RECOMMENDED (7 essential steps: Debloat, Gaming Tweaks, Services, SAFE Network, Visual Effects, Core Parking, ~3-5 minutes)
 
 ### **Individual Optimizations**
 - **[3]** - Create system restore point
@@ -106,8 +106,8 @@ A comprehensive, menu-driven batch script to optimize Windows 11 for maximum gam
 - Low latency flags for games and audio
 
 ### **Network**
-- TCP auto-tuning set to highly restricted
-- TCP acknowledgment frequency optimized
+- SAFE mode (Recommended): low-risk latency tweaks + Delivery Optimization disabled
+- AGGRESSIVE mode (Optional): additional global TCP tuning (may affect VPN/throughput on some systems)
 - MaxUserPort increased to 65534
 - TcpNoDelay and TcpAckFrequency enabled
 - Delivery Optimization (P2P updates) disabled
@@ -316,6 +316,7 @@ Use option **[V]** to check your current optimization status:
 - Animation settings
 - Network TCP optimizations
 - Startup delay configuration
+- Core parking (CPMINCORES)
 
 The verification tool shows **[PASS]** or **[WARN]** for each check and displays a percentage score. Use this after Windows updates to ensure tweaks are still active.
 
@@ -333,6 +334,7 @@ The verification tool shows **[PASS]** or **[WARN]** for each check and displays
 - **Recommended for laptops:** Use option [2] RECOMMENDED, skip Advanced GPU [C]
 - Power plans can be manually switched back via Windows Settings → System → Power
 - Consider creating a separate "Gaming (Plugged In)" power plan
+- If a laptop is detected and Windows reports the battery is discharging, the script will warn and auto-cancel by default unless you confirm
 
 ### **Script won't run**
 - Right-click → "Run as administrator"
@@ -389,9 +391,17 @@ What's new in v2.4 (high level):
 - **Fixed:** CPU name detection improved - no longer shows "Unknown" on multi-word processor names
 - **Fixed:** Verify [V] command power plan check now works correctly
 - **Fixed:** All hardware detection now uses PowerShell (WMIC removed in Windows 11 24H2+)
+- **Fixed:** Page file optimization now uses PowerShell instead of WMIC
+- **Fixed:** Visual effects verification now properly detects Balanced mode
 - **New:** Visual effects optimization menu - choose between Balanced, Minimal, or Skip
+- **New:** Recommended [2] now includes 7 steps: Debloat, Gaming Tweaks, Services, Network, Visual Effects, Core Parking, Verification
+- **New:** Verification tool now checks 8 items (added Core Parking status)
+- **New:** Low RAM warning (<8GB) during memory optimizations
+- **New:** Laptop hibernate note when hibernation is disabled
 - **Improved:** Balanced mode keeps smooth Windows 11 animations while disabling non-essential effects
-- **Improved:** Gaming machines no longer lose all visual polish by default
+- **Improved:** Better logging for bcdedit changes (Secure Boot compatibility)
+- **Improved:** Missing AddToSummary calls added for Startup, Disk, Memory, Audio
+- **Improved:** Help text shows accurate step counts (15 Full, 7 Recommended)
 - **Compatibility:** Now works on Windows 11 24H2 and newer builds where WMIC is deprecated
 
 ### **Version 2.4**
