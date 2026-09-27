@@ -50,7 +50,7 @@ if "%ADMIN_STATUS%"=="2" exit /b 0
 if not "%ADMIN_STATUS%"=="0" exit /b %ADMIN_STATUS%
 call :CheckAdmin || exit /b 1
 
-for /f %%I in ('"%POWERSHELL%" -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "STAMP=%%I"
+for /f %%I in ('%POWERSHELL% -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "STAMP=%%I"
 set "LOG_DIR=%SCRIPT_DIR%logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
 set "LOG_FILE=%LOG_DIR%\nontouch_gaming_optimizer_%STAMP%.log"
@@ -220,34 +220,50 @@ call :Log "Creating system restore point"
 echo.
 echo [*] Checking restore point prerequisites...
 call :EnsureShadowServices
-echo    %CLR_MENU%[1]%CLR_RESET% Apply SAFE network tweaks (recommended)
-echo    %CLR_MENU%[2]%CLR_RESET% Apply AGGRESSIVE network tweaks (may affect VPN/throughput)
-echo    %CLR_MENU%[3]%CLR_RESET% Revert network tweaks to Windows defaults
-echo    %CLR_MENU%[4]%CLR_RESET% Return to main menu
+if errorlevel 1 (
+    echo [!] Volume Shadow Copy services are unavailable.
     call :Log "Restore point prerequisites missing"
-    exit /b 1
-choice /c 1234 /n /m "Select an option: "
-echo [*] Creating system restore point...
-    "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Try { Checkpoint-Computer -Description 'NonTouchGamingOptimizer' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; exit 0 } Catch { Write-Warning $_; exit 1 }" >> "%LOG_FILE%" 2>&1
-    call :ApplyNetworkTweaksSafe
-    echo.
-    echo ========================================================================
-    echo   [!] SYSTEM RESTORE POINT FAILED
-    echo ========================================================================
-    call :ApplyNetworkTweaks
-    echo.
-    echo   To enable System Protection:
-    echo   1. Open Control Panel ^> System ^> System Protection
-    echo   2. Select your C: drive and click "Configure"
-    call :RevertNetworkTweaks
-    call :PauseReturn
-    goto NetworkOptions
+    goto RestorePointFailed
 )
-if "%netopt%"=="4" exit /b 0
+echo [*] Creating system restore point...
+REM Exit 2 = Windows declined with a warning, usually because a restore point already exists from the last 24 hours
+"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "Try { Checkpoint-Computer -Description 'NonTouchGamingOptimizer' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop -WarningVariable rpWarn; if ($rpWarn) { exit 2 }; exit 0 } Catch { Write-Warning $_; exit 1 }" >> "%LOG_FILE%" 2>&1
+set "RP_RESULT=%errorlevel%"
+if "%RP_RESULT%"=="0" (
+    echo %CLR_SUCCESS%[+] Restore point created successfully.%CLR_RESET%
+    call :Log "Restore point created"
+    exit /b 0
+)
+if "%RP_RESULT%"=="2" (
+    echo %CLR_WARNING%[!] Windows did not create a new restore point - usually because one was already made in the last 24 hours.%CLR_RESET%
+    echo     Continuing with your existing restore point. See the log for details.
+    call :Log "Restore point skipped by Windows - recent restore point likely exists"
+    exit /b 0
+)
+call :Log "Restore point creation failed"
+
+:RestorePointFailed
+echo.
+echo ========================================================================
+echo   [!] SYSTEM RESTORE POINT FAILED
+echo ========================================================================
+echo.
+echo   To enable System Protection:
+echo   1. Open Control Panel ^> System ^> System Protection
+echo   2. Select your C: drive and click "Configure"
+echo   3. Choose "Turn on system protection" and click OK
+echo.
+choice /c YN /n /m "Continue without a restore point? (Y/N): "
+if errorlevel 2 (
     echo.
-        call :Log "Restore point creation failed"
-        echo.
-        choice /c YN /n /m "Continue without a restore point? (Y/N): "
+    echo [!] Operation cancelled. Please enable System Protection and rerun the script.
+    call :Log "User aborted after restore failure"
+    exit /b 1
+)
+echo.
+echo [!] Continuing without a restore point at user request...
+call :Log "User chose to continue without restore point"
+exit /b 0
 
 :ApplyNetworkTweaksSafe
 call :Log "Applying SAFE network tweaks"
@@ -274,20 +290,6 @@ call :AddToSummary "Network optimized (safe)"
 echo.
 echo %CLR_SUCCESS%[+] Safe network tweaks applied!%CLR_RESET% Low risk, good baseline.
 echo     Log: %LOG_FILE%
-exit /b 0
-        if errorlevel 2 (
-            echo.
-            echo [!] Operation cancelled. Please enable System Protection and rerun the script.
-            call :Log "User aborted after restore failure"
-            exit /b 1
-        )
-        echo.
-        echo [!] Continuing without a restore point at user request...
-        call :Log "User chose to continue without restore point"
-) else (
-    echo %CLR_SUCCESS%[+] Restore point created successfully.%CLR_RESET%
-    call :Log "Restore point created"
-)
 exit /b 0
 
 :Debloat
@@ -374,13 +376,13 @@ call :BackupRegistryKeys
 call :Log "Applying gaming tweaks"
 echo.
 echo %CLR_TITLE%  ======================================================================%CLR_RESET%
-echo %CLR_TITLE%  ^^|                 GAMING PERFORMANCE TWEAKS                         ^^|%CLR_RESET%
+echo %CLR_TITLE%  ^|                 GAMING PERFORMANCE TWEAKS                         ^|%CLR_RESET%
 echo %CLR_TITLE%  ======================================================================%CLR_RESET%
 echo.
 if not defined DVR_PREF_SET (
     echo [*] Game Bar capture: keep it on, or disable for a small FPS gain?
     choice /c YN /n /d N /t 5 /m "Disable Game DVR background capture? (Y/N, default=N): "
-    if "%errorlevel%"=="1" (
+    if "!errorlevel!"=="1" (
         set "DISABLE_DVR=1"
     ) else (
         set "DISABLE_DVR=0"
@@ -766,7 +768,7 @@ call :Log "Optimizing memory"
 echo [*] Enabling memory compression and optimizing paging...
 if defined RAM_GB (
     if %RAM_GB% LSS 8 (
-        echo     %CLR_WARNING%[!] WARNING: Low RAM detected (%RAM_GB%GB). DisablePagingExecutive may cause instability.%CLR_RESET%
+        echo     %CLR_WARNING%[!] WARNING: Low RAM detected ^(%RAM_GB%GB^). DisablePagingExecutive may cause instability.%CLR_RESET%
         echo     %CLR_WARNING%    Consider adding more RAM for better gaming performance.%CLR_RESET%
         call :Log "Low RAM warning: %RAM_GB%GB detected - DisablePagingExecutive may cause issues"
     )
@@ -805,7 +807,7 @@ if %RAM_GB% GEQ 16 (
     call :Log "Page file: Managed (16GB+ RAM detected)"
     call :AddToSummary "Page file optimized for %RAM_GB%GB RAM"
 ) else if %RAM_GB% GEQ 8 (
-    echo     System RAM: %RAM_GB%GB - Setting fixed page file (4GB)
+    echo     System RAM: %RAM_GB%GB - Setting fixed page file ^(4GB^)
     REM Win32_PageFileSetting may not exist when automatic management is enabled; set via CIM + registry for reliability.
     "%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "$cs = Get-CimInstance Win32_ComputerSystem; $cs | Set-CimInstance -Property @{AutomaticManagedPagefile=$false}; Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name PagingFiles -Value @('C:\\pagefile.sys 4096 4096')" >nul 2>&1
     if errorlevel 1 call :Log "Warning: Failed setting fixed page file size"
@@ -971,7 +973,7 @@ echo.
 set /p "confirm=Type YES to disable Xbox services: "
 if /I not "!confirm!"=="YES" (
     echo.
-    echo [!] Xbox services NOT disabled (user cancelled).
+    echo [!] Xbox services NOT disabled ^(user cancelled^).
     call :Log "User cancelled Xbox service disable"
     exit /b 0
 )
@@ -1098,13 +1100,13 @@ echo   Log file: %LOG_FILE%
 echo.
 echo   %CLR_SUBTITLE%System Information:%CLR_RESET%
 set "TOTAL_RAM="
-for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { [int]([Math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB),0)) } catch { '' }"`) do set "TOTAL_RAM=%%I"
+for /f "usebackq tokens=* delims=" %%I in (`%POWERSHELL% -NoProfile -Command "try { [int]([Math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB),0)) } catch { '' }"`) do set "TOTAL_RAM=%%I"
 if defined TOTAL_RAM echo   - RAM: !TOTAL_RAM! GB
 set "CPU_INFO="
-for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim() } catch { '' }"`) do set "CPU_INFO=%%I"
+for /f "usebackq tokens=* delims=" %%I in (`%POWERSHELL% -NoProfile -Command "try { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim() } catch { '' }"`) do set "CPU_INFO=%%I"
 if defined CPU_INFO echo   - CPU: !CPU_INFO!
 set "GPU_INFO="
-for /f "usebackq tokens=* delims=" %%I in (`"%POWERSHELL%" -NoProfile -Command "try { $gpus = Get-CimInstance Win32_VideoController ^| Where-Object { $_.Name -and $_.Name -notmatch 'Vivi^|Microsoft Basic^|Remote Desktop^|Virtual^|Parsec^|VMware^|Hyper-V' }; $discrete = $gpus ^| Where-Object { $_.Name -match 'NVIDIA^|AMD^|Radeon^|GeForce^|RTX^|GTX' } ^| Select-Object -First 1; if ($discrete) { $discrete.Name.Trim() } elseif ($gpus) { ($gpus ^| Select-Object -First 1).Name.Trim() } else { '' } } catch { '' }"`) do set "GPU_INFO=%%I"
+for /f "usebackq tokens=* delims=" %%I in (`%POWERSHELL% -NoProfile -Command "try { $gpus = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -and $_.Name -notmatch 'Vivi|Microsoft Basic|Remote Desktop|Virtual|Parsec|VMware|Hyper-V' }; $discrete = $gpus | Where-Object { $_.Name -match 'NVIDIA|AMD|Radeon|GeForce|RTX|GTX' } | Select-Object -First 1; if ($discrete) { $discrete.Name.Trim() } elseif ($gpus) { ($gpus | Select-Object -First 1).Name.Trim() } else { '' } } catch { '' }"`) do set "GPU_INFO=%%I"
 if defined GPU_INFO echo   - GPU: !GPU_INFO!
 echo.
 echo   %CLR_SUBTITLE%Active Optimizations (check log for details):%CLR_RESET%
@@ -1360,7 +1362,7 @@ set "CHASSIS_TYPE=Unknown"
 set "IS_LAPTOP=0"
 set "CHASSIS_CODE="
 REM PowerShell for chassis detection
-for /f "usebackq delims=" %%I in (`"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes[0]"`) do (
+for /f "usebackq delims=" %%I in (`%POWERSHELL% -NoProfile -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes[0]"`) do (
     set "CHASSIS_CODE=%%I"
 )
 if defined CHASSIS_CODE (
@@ -1417,7 +1419,7 @@ REM If this is a laptop and it is currently discharging on battery, warn before 
 if /I not "%CHASSIS_TYPE%"=="Laptop" exit /b 0
 
 set "BAT_STATUS="
-for /f "usebackq delims=" %%B in (`"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "$b=Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1; if($b){$b.BatteryStatus}else{''}"`) do set "BAT_STATUS=%%B"
+for /f "usebackq delims=" %%B in (`%POWERSHELL% -NoProfile -ExecutionPolicy Bypass -Command "$b=Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1; if($b){$b.BatteryStatus}else{''}"`) do set "BAT_STATUS=%%B"
 if not defined BAT_STATUS exit /b 0
 
 REM BatteryStatus: 1=Discharging, 2=AC, 3=Fully Charged (AC)
@@ -1432,7 +1434,7 @@ if "%BAT_STATUS%"=="1" (
     echo   %CLR_WARNING%Recommendation:%CLR_RESET% Plug in AC power, then rerun.
     echo.
     choice /c YN /n /t 10 /d N /m "Continue anyway? (Y/N, auto-No in 10s): "
-    if not "%errorlevel%"=="1" (
+    if not "!errorlevel!"=="1" (
         call :Log "User aborted due to on-battery warning"
         echo.
         echo [!] Optimization cancelled. Plug in power and try again.
@@ -1446,7 +1448,7 @@ exit /b 0
 :DetectRAM
 set "RAM_GB="
 REM PowerShell for RAM detection
-for /f "usebackq delims=" %%I in (`"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "[int]([Math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB),0))"`) do (
+for /f "usebackq delims=" %%I in (`%POWERSHELL% -NoProfile -ExecutionPolicy Bypass -Command "[int]([Math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB),0))"`) do (
     set "RAM_GB=%%I"
 )
 if defined RAM_GB (
@@ -1459,7 +1461,7 @@ exit /b 0
 :DetectStorageType
 set "STORAGE_TYPE=Unknown"
 REM PowerShell for storage detection
-for /f "usebackq delims=" %%I in (`"%POWERSHELL%" -NoProfile -ExecutionPolicy Bypass -Command "$d = Get-PhysicalDisk | Where-Object { $_.DeviceID -eq '0' }; if ($d) { $d.MediaType } else { 'Unknown' }"`) do (
+for /f "usebackq delims=" %%I in (`%POWERSHELL% -NoProfile -ExecutionPolicy Bypass -Command "$d = Get-PhysicalDisk | Where-Object { $_.DeviceID -eq '0' }; if ($d) { $d.MediaType } else { 'Unknown' }"`) do (
     if "%%I"=="SSD" set "STORAGE_TYPE=SSD"
     if "%%I"=="HDD" set "STORAGE_TYPE=HDD"
 )
@@ -1510,8 +1512,8 @@ echo ========================================================================
 echo   %CLR_TITLE%CHANGES APPLIED THIS SESSION%CLR_RESET%
 echo ========================================================================
 echo.
-for %%I in (%CHANGES_SUMMARY:|= %) do (
-    echo   %CLR_SUCCESS%[+]%CLR_RESET% %%I
+for %%I in ("%CHANGES_SUMMARY:|=" "%") do (
+    echo   %CLR_SUCCESS%[+]%CLR_RESET% %%~I
 )
 echo.
 echo ========================================================================
@@ -1586,7 +1588,7 @@ echo.
 echo   %CLR_SUBTITLE%Visual Effects:%CLR_RESET%
 reg query "HKCU\Software\Microsoft\Windows\DWM" /v EnableAeroPeek 2>nul | findstr "0x0" >nul
 if not errorlevel 1 (
-    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% Visual effects optimized (Aero Peek disabled)
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% Visual effects optimized ^(Aero Peek disabled^)
     set /a VERIFY_PASS+=1
 ) else (
     echo     %CLR_WARNING%[WARN]%CLR_RESET% Visual effects not optimized
@@ -1627,7 +1629,7 @@ for /f "tokens=*" %%L in ('powercfg -query SCHEME_CURRENT SUB_PROCESSOR CPMINCOR
     echo %%L | findstr /I "0x00000064" >nul && set "COREPARK_OK=1"
 )
 if "%COREPARK_OK%"=="1" (
-    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% CPU core parking disabled (CPMINCORES=100)
+    echo     %CLR_SUCCESS%[PASS]%CLR_RESET% CPU core parking disabled ^(CPMINCORES=100^)
     set /a VERIFY_PASS+=1
 ) else (
     echo     %CLR_WARNING%[WARN]%CLR_RESET% Core parking may still be active
